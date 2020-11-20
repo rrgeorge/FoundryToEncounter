@@ -258,7 +258,7 @@ def createMap(map,mapgroup):
                     img.save(os.path.join(tempdir,image["img"]))
     return mapslug
 
-with zipfile.ZipFile(args.srcfile) as z:
+with zipfile.ZipFile(args.srcfile[0]) as z:
     journal = []
     maps = []
     folders = []
