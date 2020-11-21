@@ -129,7 +129,7 @@ def createMap(map,mapgroup):
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
             if imgext == ".webp":
                 ET.SubElement(mapentry,'snapshot').text = os.path.splitext(map["thumb"])[0]+".png"
-                PIL.Image.open(map["thumb"]).save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+".png"))
+                PIL.Image.open(map["thumb"]).save(os.path.join(tempdir,os.path.splitext(map["thumb"])[0]+".png"))
             else:
                 ET.SubElement(mapentry,'snapshot').text = map["thumb"]
 
@@ -264,6 +264,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
     maps = []
     folders = []
     actors = []
+    items = []
     tables = []
     mod = None
     isworld = False
@@ -299,12 +300,20 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     maps.append(scene)
                     l = f.readline()
                 f.close()
-        elif filename.endswith("actor.db"):
+        elif filename.endswith("actors.db"):
             with z.open(filename) as f:
                 l = f.readline()
                 while l:
                     actor = json.loads(l)
                     actors.append(actor)
+                    l = f.readline()
+                f.close()
+        elif filename.endswith("items.db"):
+            with z.open(filename) as f:
+                l = f.readline()
+                while l:
+                    item = json.loads(l)
+                    items.append(item)
                     l = f.readline()
                 f.close()
         elif filename.endswith("tables.db"):
@@ -405,6 +414,7 @@ for j in journal:
     ET.SubElement(page,'name').text = j['name']
     ET.SubElement(page,'slug').text = slugify(j['name'])
     content = ET.SubElement(page,'content')
+    content.text = j['content'] or ""
     def fixLink(m):
         if m.group(2) == "JournalEntry":
             return '<a href="/page/{}" {} {} {}'.format(m.group(4),m.group(1),m.group(3),m.group(5))
@@ -413,16 +423,47 @@ for j in journal:
                 if a['_id'] == m.group(4):
                     return '<a href="/monster/{}" {} {} {}'.format(slugify(a['name']),m.group(1),m.group(3),m.group(5))
         return m.group(0)
-    content.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,j['content'])
+    content.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,content.text)
+    def fixFTag(m):
+        if m.group(1) == "JournalEntry":
+            return '<a href="/page/{}">{}</a>'.format(m.group(2),m.group(3) or "Journal Entry")
+        if m.group(1) == "RollTable":
+            return '<a href="/page/{}">{}</a>'.format(m.group(2),m.group(3) or "Roll Table")
+        if m.group(1) == "Scene":
+            return '<a href="/map/{}">{}</a>'.format(m.group(2),m.group(3) or "Map")
+        if m.group(1) == "Actor":
+            for a in actors:
+                if a['_id'] == m.group(2):
+                    return '<a href="/monster/{}">{}</a>'.format(slugify(a['name']),m.group(3) or a['name'],m.group(3))
+        if m.group(1) == "Compendium" and m.group(3):
+            (system,entrytype,idnum) = m.group(2).split('.',3)
+            return '<a href="/{}/{}">{}</a>'.format(entrytype,slugify(m.group(3)),m.group(3))
+        if m.group(1) == "Item":
+            for i in items:
+                if i['_id'] == m.group(2):
+                    return '<a href="/item/{}">{}</a>'.format(slugify(i['name']),m.group(3) or i['name'])
+        return m.group(0)
+    content.text = re.sub(r'@(.*?)\[(.*?)\](?:\{(.*?)\})?',fixFTag,content.text)
+    def fixRoll(m):
+        if m.group(2):
+            return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
+        else:
+            return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
+    content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
     if 'img' in j and j['img']:
         content.text += '<img src="{}">'.format(j["img"])
 order = 0
+if len(tables) > 0:
+    tablesbaseslug = 'tables'
+    tablesslug = tablesbaseslug + str(len([i for i in slugs if tablesbaseslug in i]))
+    tablesgroup = str(uuid.uuid5(moduuid,tablesslug))
+    group = ET.SubElement(module, 'group', {'id': tablesgroup, 'sort': str(int(maxorder+1))})
+    ET.SubElement(group, 'name').text = "Roll Tables"
+    ET.SubElement(group, 'slug').text = tablesslug
 for t in tables:
     order += 1
     print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
-    page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'sort': str(t['sort'] or order) } )
-    if 'folder' in t and t['folder'] != None:
-        page.set('parent',t['folder'])
+    page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] or order) } )
     ET.SubElement(page,'name').text = t['name']
     ET.SubElement(page,'slug').text = slugify(t['name'])
     content = ET.SubElement(page,'content')
@@ -434,22 +475,48 @@ for t in tables:
     for r in t['results']:
         content.text += '<tr>'
         content.text += '<td>{}</td>'.format("{}-{}".format(*r['range']) if r['range'][0]!=r['range'][1] else r['range'][0])
-        content.text += '<td>{}</td>'.format(r['text'] if r['text'] else '&nbsp;')
-        content.text += '<td style="width:50px;height:50px;"><img src="{}"></td>'.format(r['img'])
+        content.text += '<td>'
+        linkMade = False
+        if 'collection' in r:
+            if r['collection'] == 'dnd5e.monsters':
+                content.text += '<a href="/monster/{}">{}</a>'.format(slugify(r['text']),r['text'])
+                linkMade = True
+            elif r['collection'] == 'Actor':
+                for a in actors:
+                    if a['_id'] == r['resultId']:
+                        content.text += '<a href="/monster/{}">{}</a>'.format(slugify(a['name']),r['text'])
+                        linkMade = True
+            elif r['collection'] == 'Item':
+                for i in items:
+                    if i['_id'] == r['resultId']:
+                        content.text += '<a href="/item/{}">{}</a>'.format(slugify(i['name']),r['text'])
+                        linkMade = True
+        if not linkMade:
+            content.text += '{}'.format(r['text'] if r['text'] else '&nbsp;')
+        content.text += '</td>'
+        if os.path.exists(r['img']):
+            content.text += '<td style="width:50px;height:50px;"><img src="{}"></td>'.format(r['img'])
+        else:
+            content.text += '<td style="width:50px;height:50px;">&nbsp;</td>'
         content.text += '</tr>'
     content.text += "</tbody></table>"
-
+    def fixRoll(m):
+        if m.group(2):
+            return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
+        else:
+            return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
+    content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
 
 mapcount = 0
 if len(maps) > 0:
     mapsbaseslug = 'maps'
     mapsslug = mapsbaseslug + str(len([i for i in slugs if mapsbaseslug in i]))
     mapgroup = str(uuid.uuid5(moduuid,mapsslug))
-    group = ET.SubElement(module, 'group', {'id': mapgroup, 'sort': str(int(maxorder+1))})
+    group = ET.SubElement(module, 'group', {'id': mapgroup, 'sort': str(int(maxorder+2))})
     ET.SubElement(group, 'name').text = "Maps"
     ET.SubElement(group, 'slug').text = mapsslug
     for map in maps:
-        if not modimage.text and map["name"].lower() in ["start","start here"]:
+        if not modimage.text and map["name"].lower() in ["start","start here","title page","title","landing","landing page"]:
             modimage.text = map["img"] or map["tiles"][0]["img"]
         if not map["img"] and len(map["tiles"]) == 0:
             continue
