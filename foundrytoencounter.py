@@ -15,6 +15,7 @@ import urllib.request
 import math
 import PIL.Image
 import PIL.ImageOps
+import random
 
 # Argument Parser
 parser = argparse.ArgumentParser(
@@ -456,6 +457,17 @@ if len(maps) > 0:
         sys.stderr.write("\033[K")
         print("\rConverting maps [{}/{}] {:.0f}%".format(mapcount,len(maps),mapcount/len(maps)*100),file=sys.stderr,end='')
         createMap(map,mapgroup)
+if not modimage.text:
+    map = random.choice(maps)
+    with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
+        if img.width >= img.width:
+            img.crop((0,0,img.width,img.width))
+        else:
+            img.crop((0,0,img.height,img.height))
+        if img.width > 1024:
+            img.resize((1024,1024))
+        img.save(os.path.join(tempdir,"module_cover.png"))
+    modimage.text = "module_cover.png"
 os.chdir(cwd)
 # write to file
 sys.stderr.write("\033[K")
