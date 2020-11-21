@@ -278,77 +278,77 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                 mod = json.load(f)
         elif filename.endswith("folders.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     folder = json.loads(l)
                     folders.append(folder)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         elif filename.endswith("journal.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     jrn = json.loads(l)
                     journal.append(jrn)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         elif filename.endswith("scenes.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     scene = json.loads(l)
                     maps.append(scene)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         elif filename.endswith("actors.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     actor = json.loads(l)
                     actors.append(actor)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         elif filename.endswith("items.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     item = json.loads(l)
                     items.append(item)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         elif filename.endswith("tables.db"):
             with z.open(filename) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     table = json.loads(l)
                     tables.append(table)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
     for pack in mod['packs']:
         pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
         if pack['entity'] == 'JournalEntry':
             with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     jrn = json.loads(l)
                     journal.append(jrn)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         if pack['entity'] == 'Scene':
             with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     scene = json.loads(l)
                     maps.append(scene)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
         if pack['entity'] == 'Actor':
             with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline()
+                l = f.readline().decode('utf8')
                 while l:
                     actor = json.loads(l)
                     actors.append(actor)
-                    l = f.readline()
+                    l = f.readline().decode('utf8')
                 f.close()
     print(mod["title"])
     global moduuid
