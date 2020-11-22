@@ -326,30 +326,20 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                 f.close()
     for pack in mod['packs']:
         pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
-        if pack['entity'] == 'JournalEntry':
-            with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline().decode('utf8')
-                while l:
+        with z.open(mod['name']+'/'+pack['path']) as f:
+            l = f.readline().decode('utf8')
+            while l:
+                if pack['entity'] == 'JournalEntry':
                     jrn = json.loads(l)
                     journal.append(jrn)
-                    l = f.readline().decode('utf8')
-                f.close()
-        if pack['entity'] == 'Scene':
-            with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline().decode('utf8')
-                while l:
+                elif pack['entity'] == 'Scene':
                     scene = json.loads(l)
                     maps.append(scene)
-                    l = f.readline().decode('utf8')
-                f.close()
-        if pack['entity'] == 'Actor':
-            with z.open(os.path.join(mod['name'],pack['path'])) as f:
-                l = f.readline().decode('utf8')
-                while l:
+                elif pack['entity'] == 'Actor':
                     actor = json.loads(l)
                     actors.append(actor)
-                    l = f.readline().decode('utf8')
-                f.close()
+                l = f.readline().decode('utf8')
+            f.close()
     print(mod["title"])
     global moduuid
     if isworld:
