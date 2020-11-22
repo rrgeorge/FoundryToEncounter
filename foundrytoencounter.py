@@ -27,6 +27,13 @@ parser.add_argument(
     default=None,
     help="output into given output (default: [name].module)")
 parser.add_argument(
+    '-c',
+    dest="compendium",
+    action='store_const',
+    const=True,
+    default=False,
+    help="create compendium content with actors and items")
+parser.add_argument(
     dest="srcfile",
     action='store',
     default=False,
@@ -44,7 +51,26 @@ nsuuid = uuid.UUID("ee9acc6e-b94a-472a-b44d-84dc9ca11b87")
 
 numbers = ['zero','one','two','three','four']
 stats = {"str":"Strength","dex":"Dexterity","con":"Constitution","int":"Intelligence","wis":"Wisdom","cha":"Charisma"}
-
+skills = {
+    "acr": "Acrobatics",
+    "ani": "Animal Handling",
+    "arc": "Arcana",
+    "ath": "Athletics",
+    "dec": "Deception",
+    "his": "History",
+    "ins": "Insight",
+    "inv": "Investigation",
+    "itm": "Intimidation",
+    "med": "Medicine",
+    "nat": "Nature",
+    "per": "Persuasion",
+    "prc": "Perception",
+    "prf": "Performance",
+    "rel": "Religion",
+    "slt": "Sleight of Hand",
+    "ste": "Stealth",
+    "sur": "Survival"
+    }
 def indent(elem, level=0):
     i = "\n" + level * "  "
     j = "\n" + (level - 1) * "  "
@@ -61,6 +87,11 @@ def indent(elem, level=0):
         if level and (not elem.tail or not elem.tail.strip()):
             elem.tail = j
     return elem
+def fixRoll(m):
+    if m.group(2):
+        return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
+    else:
+        return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
 def createMap(map,mapgroup):
     map["offsetX"] = (map["width"] + math.ceil(0.5 * map["width"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["width"]) * 0.5
     map["offsetY"] = (map["height"] + math.ceil(0.5 * map["height"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["height"]) * 0.5
@@ -434,11 +465,6 @@ for j in journal:
                     return '<a href="/item/{}">{}</a>'.format(slugify(i['name']),m.group(3) or i['name'])
         return m.group(0)
     content.text = re.sub(r'@(.*?)\[(.*?)\](?:\{(.*?)\})?',fixFTag,content.text)
-    def fixRoll(m):
-        if m.group(2):
-            return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
-        else:
-            return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
     content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
     if 'img' in j and j['img']:
         content.text += '<img src="{}">'.format(j["img"])
@@ -490,11 +516,6 @@ for t in tables:
             content.text += '<td style="width:50px;height:50px;">&nbsp;</td>'
         content.text += '</tr>'
     content.text += "</tbody></table>"
-    def fixRoll(m):
-        if m.group(2):
-            return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
-        else:
-            return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
     content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
 
 mapcount = 0
@@ -516,6 +537,7 @@ if len(maps) > 0:
         createMap(map,mapgroup)
 if not modimage.text:
     map = random.choice(maps)
+    print("\rGenerating cover image",file=sys.stderr,end='')
     with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
         if img.width >= img.width:
             img.crop((0,0,img.width,img.width))
@@ -525,12 +547,170 @@ if not modimage.text:
             img.resize((1024,1024))
         img.save(os.path.join(tempdir,"module_cover.png"))
     modimage.text = "module_cover.png"
-os.chdir(cwd)
 # write to file
 sys.stderr.write("\033[K")
 print("\rWriting XML",file=sys.stderr,end='')
 tree = ET.ElementTree(indent(module, 1))
 tree.write(os.path.join(tempdir,"module.xml"), xml_declaration=True, short_empty_elements=False, encoding='utf-8')
+if args.compendium and (len(items)+len(actors)) > 0:
+    compendium = ET.Element('compendium')
+    os.mkdir(os.path.join(tempdir,"items"))
+    os.mkdir(os.path.join(tempdir,"monsters"))
+    itemnumber = 0
+    for i in items:
+        itemnumber += 1
+        print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
+        item = ET.SubElement(compendium,'item',{'id': i['_id']})
+        d = i['data']
+        ET.SubElement(item,'name').text = i['name']
+        ET.SubElement(item,'slug').text = slugify(i['name'])
+        ET.SubElement(item,'weight').text = str(d['weight'])
+        ET.SubElement(item,'rarity').text = d['rarity'].title()
+        value = ET.SubElement(item,'value')
+        if d['price'] >= 100:
+            value.text = "{:g} gp".format(d['price']/100)
+        elif d['price'] >= 10:
+            value.text = "{:g} sp".format(d['price']/10)
+        else:
+            value.text = "{:g} cp".format(d['price'])
+        if i['type'] in ['consumable']:
+            if d['consumableType'] == 'potion':
+                ET.SubElement(item,'type').text = 'P'
+            elif d['consumableType'] == 'wand':
+                ET.SubElement(item,'type').text = 'WD'
+            elif d['consumableType'] == 'food':
+                ET.SubElement(item,'type').text = 'G'
+            else:
+                print("Dont know consumable:",d['consumableType'])
+                ET.SubElement(item,'type').text = 'G'
+        elif i['type'] in ['equipment']:
+            if d['armor']['type'] in ['clothing']:
+                ET.SubElement(item,'type').text = 'LA'
+            elif d['armor']['type'] in ['trinket']:
+                ET.SubElement(item,'type').text = 'G'
+            else:
+                print("Dont know armor type:",d['armor']['type'])
+                ET.SubElement(item,'type').text = 'AA'
+            if d['armor']['value']:
+                ET.SubElement(item,'ac').text = str(d['armor']['value'])
+        elif i['type'] == "weapon":
+            if d['weaponType'] in ["simpleR","martialR"]:
+                ET.SubElement(item,'type').text = 'R'
+                ET.SubElement(item,'range').text = "{}/{} {}".format(d['range']['value'],d['range']['long'],d['range']['units'])
+            elif d['weaponType'] in ["simpleM","martialM"]:
+                ET.SubElement(item,'type').text = 'M'
+            else:
+                print("Dont know weapon:",d['weaponType'])
+                ET.SubElement(item,'type').text = 'WW'
+            props = []
+            if d['properties']['amm']:
+                props.append('A')
+            if d['properties']['fin']:
+                props.append('F')
+            if d['properties']['hvy']:
+                props.append('H')
+            if d['properties']['lgt']:
+                props.append('L')
+            if d['properties']['lod']:
+                props.append('LD')
+            if d['properties']['rch']:
+                props.append('R')
+            if d['properties']['spc']:
+                props.append('S')
+            if d['properties']['thr']:
+                props.append('T')
+            if d['properties']['two']:
+                props.append('2H')
+            if d['properties']['ver']:
+                props.append('V')
+            ET.SubElement(item,'property').text = ','.join(props)
+            ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
+            ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
+            ET.SubElement(item,'dmgType').text = d['damage']['parts'][0][1][0].upper()
+        elif i['type'] == "loot":
+            ET.SubElement(item,'type').text = 'G'
+        else:
+            print("Dont know item type",i['type'])
+        txt = ET.SubElement(item,'text')
+        txt.text = re.sub(r'&nbsp;',r' ',d['description']['value'])
+        txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
+        if i['img'] and os.path.exists(i['img']):
+            ET.SubElement(item,'image').text = slugify(i['name'])+"_"+os.path.basename(i['img'])
+            shutil.copy(i['img'],os.path.join(tempdir,"items",slugify(i['name'])+"_"+os.path.basename(i['img'])))
+    for a in actors:
+        itemnumber += 1
+        print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
+        monster = ET.SubElement(compendium,'monster',{'id': a['_id']})
+        d = a['data']
+        ET.SubElement(monster,'name').text = a['name']
+        ET.SubElement(monster,'slug').text = slugify(a['name'])
+        ET.SubElement(monster,'size').text = d['traits']['size'][0].upper()
+        ET.SubElement(monster,'type').text = d['details']['type']
+        ET.SubElement(monster,'alignment').text = d['details']['alignment']
+        ET.SubElement(monster,'ac').text = str(d['attributes']['ac']['value'])
+        if d['attributes']['hp']['formula']:
+            ET.SubElement(monster,'hp').text = "{} ({})".format(d['attributes']['hp']['value'],d['attributes']['hp']['formula'])
+        else:
+            ET.SubElement(monster,'hp').text = "{}".format(d['attributes']['hp']['value'])
+        if d['attributes']['speed']['special']:
+            ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']+", "+d['attributes']['speed']['special']
+        else:
+            ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']
+        ET.SubElement(monster,'str').text = str(d['abilities']['str']['value'])
+        ET.SubElement(monster,'dex').text = str(d['abilities']['dex']['value'])
+        ET.SubElement(monster,'con').text = str(d['abilities']['con']['value'])
+        ET.SubElement(monster,'int').text = str(d['abilities']['int']['value'])
+        ET.SubElement(monster,'wis').text = str(d['abilities']['wis']['value'])
+        ET.SubElement(monster,'cha').text = str(d['abilities']['cha']['value'])
+        ET.SubElement(monster,'save').text = ", ".join(['{} {:+d}'.format(k.title(),v['save']) for (k,v) in d['abilities'].items() if 'save' in v and (v['save'] != v['mod'] or v['proficient'])])
+        ET.SubElement(monster,'skill').text = ", ".join(['{} {:+d}'.format(skills[k],v['total']) for (k,v) in d['skills'].items() if 'total' in v and v['mod'] != v['total']])
+        ET.SubElement(monster,'immune').text = "; ".join(d['traits']['di']['value'])+(" {}".format(d['traits']['di']['special']) if 'special' in d['traits']['di'] and d['traits']['di']['special'] else "")
+        ET.SubElement(monster,'vulnerable').text = "; ".join(d['traits']['dv']['value'])+(" {}".format(d['traits']['dv']['special']) if 'special' in d['traits']['dv'] and d['traits']['dv']['special'] else "")
+        ET.SubElement(monster,'resist').text = "; ".join(d['traits']['dr']['value'])+(" {}".format(d['traits']['dr']['special']) if 'special' in d['traits']['dr'] and d['traits']['dr']['special'] else "")
+        ET.SubElement(monster,'conditionImmune').text = ", ".join(d['traits']['ci']['value'])+(" {}".format(d['traits']['ci']['special']) if 'special' in d['traits']['ci'] and d['traits']['ci']['special'] else "")
+        ET.SubElement(monster,'senses').text = d['traits']['senses']
+        ET.SubElement(monster,'passive').text = str(d['skills']['prc']['passive']) if 'passive' in d['skills']['prc'] else ""
+        ET.SubElement(monster,'languages').text = ", ".join(d['traits']['languages']['value'])+(" {}".format(d['traits']['languages']['special']) if 'special' in d['traits']['languages'] and d['traits']['languages']['special'] else "")
+        ET.SubElement(monster,'description').text = (d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
+        ET.SubElement(monster,'cr').text = "{}/{}".format(*d['details']['cr'].as_integer_ratio()) if type(d['details']['cr']) != str and 0<d['details']['cr']<1  else str(d['details']['cr'])
+        ET.SubElement(monster,'source').text = d['details']['source']
+        ET.SubElement(monster,'environments').text = d['details']['environment']
+        if a['img'] and os.path.exists(a['img']):
+            if os.path.splitext(a["img"])[1] == ".webp":
+                PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"))
+                ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"
+            else:
+                ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.basename(a['img'])
+                shutil.copy(a['img'],os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.basename(a['img'])))
+        if a['token']['img'] and os.path.exists(a['token']['img']):
+            if os.path.splitext(a['token']["img"])[1] == ".webp":
+                PIL.Image.open(a['token']["img"]).save(os.path.join(tempdir,"monsters","token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"))
+                ET.SubElement(monster,'image').text = "token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"
+            else:
+                ET.SubElement(monster,'token').text = "token_"+slugify(a['name'])+"_"+os.path.basename(a['token']['img'])
+                shutil.copy(a['token']['img'],os.path.join(tempdir,"monsters","token_"+slugify(a['name'])+"_"+os.path.basename(a['img'])))
+        equip = []
+        for trait in a['items']:
+            if trait['type'] == 'feat':
+                typ = 'trait'
+            elif trait['type'] == 'weapon':
+                typ = 'action'
+            else:
+                if trait['type'] == 'equipment':
+                    equip.append("<item>{}</item>".format(trait['name']))
+                continue
+            el = ET.SubElement(monster,typ)
+            ET.SubElement(el,'name').text = trait['name']
+            txt = ET.SubElement(el,'text')
+            txt.text = re.sub(r'&nbsp;',r' ',trait['data']['description']['value'])
+            txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
+        if len(equip) > 0:
+            trait = ET.SubElement(monster,'trait')
+            ET.SubElement(trait,'name').text = "Equipment"
+            ET.SubElement(trait,'text').text = ", ".join(equip)
+    tree = ET.ElementTree(indent(compendium, 1))
+    tree.write(os.path.join(tempdir,"compendium.xml"), xml_declaration=True, short_empty_elements=False, encoding='utf-8')
+os.chdir(cwd)
 zipfilename = "{}.module".format(mod['name'])
 # zipfile = shutil.make_archive("module","zip",tempdir)
 if args.output:
