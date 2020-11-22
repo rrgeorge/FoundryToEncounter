@@ -1,6 +1,9 @@
 # FoundryToEncounter
 
-Utility to convert Foundry modules/worlds to an EncounterPlus module
+Utility to convert Foundry modules/worlds to an EncounterPlus module.
+- Scenes are converted to maps with an encounter for assinged tokens.
+- Journal entries and Roll tables are converted to pages.
+- Optionally, actors and items can be converted into compendium content.
 
 ## Install required modules
 
@@ -18,7 +21,14 @@ Utility to convert Foundry modules/worlds to an EncounterPlus module
     optional arguments:
       -h, --help  show this help message and exit
       -o OUTPUT   output into given output (default: [name].module)
+      -c          create compendium content with actors and items
 
-## Example
+## Examples
+
+Convert a foundry module/world to an EncounterPlus module:
+
+    python3 foundrytoencounter.py foundrymodule.zip
+
+Or to include an compendium content from Actors and Items:
 
     python3 foundrytoencounter.py foundrymodule.zip
