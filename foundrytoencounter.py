@@ -326,7 +326,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
         elif not mod and filename.endswith("module.json"):
             with z.open(filename) as f:
                 mod = json.load(f)
-        elif filename.endswith("folders.db"):
+        elif filename.endswith("data/folders.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -334,7 +334,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     folders.append(folder)
                     l = f.readline().decode('utf8')
                 f.close()
-        elif filename.endswith("journal.db"):
+        elif filename.endswith("data/journal.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -342,7 +342,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     journal.append(jrn)
                     l = f.readline().decode('utf8')
                 f.close()
-        elif filename.endswith("scenes.db"):
+        elif filename.endswith("data/scenes.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -350,7 +350,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     maps.append(scene)
                     l = f.readline().decode('utf8')
                 f.close()
-        elif filename.endswith("actors.db"):
+        elif filename.endswith("data/actors.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -358,7 +358,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     actors.append(actor)
                     l = f.readline().decode('utf8')
                 f.close()
-        elif filename.endswith("items.db"):
+        elif filename.endswith("data/items.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -366,7 +366,7 @@ with zipfile.ZipFile(args.srcfile[0]) as z:
                     items.append(item)
                     l = f.readline().decode('utf8')
                 f.close()
-        elif filename.endswith("tables.db"):
+        elif filename.endswith("data/tables.db"):
             with z.open(filename) as f:
                 l = f.readline().decode('utf8')
                 while l:
@@ -498,7 +498,7 @@ if len(tables) > 0:
 for t in tables:
     order += 1
     print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
-    page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] or order) } )
+    page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
     ET.SubElement(page,'name').text = t['name']
     ET.SubElement(page,'slug').text = slugify(t['name'])
     content = ET.SubElement(page,'content')
@@ -579,19 +579,24 @@ if args.compendium and (len(items)+len(actors)) > 0:
     for i in items:
         itemnumber += 1
         print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
+        if i['type'] in ['feat','spell']:
+            continue
         item = ET.SubElement(compendium,'item',{'id': i['_id']})
         d = i['data']
         ET.SubElement(item,'name').text = i['name']
         ET.SubElement(item,'slug').text = slugify(i['name'])
-        ET.SubElement(item,'weight').text = str(d['weight'])
-        ET.SubElement(item,'rarity').text = d['rarity'].title()
-        value = ET.SubElement(item,'value')
-        if d['price'] >= 100:
-            value.text = "{:g} gp".format(d['price']/100)
-        elif d['price'] >= 10:
-            value.text = "{:g} sp".format(d['price']/10)
-        else:
-            value.text = "{:g} cp".format(d['price'])
+        if 'weight' in d:
+            ET.SubElement(item,'weight').text = str(d['weight'])
+        if 'rarity' in d:
+            ET.SubElement(item,'rarity').text = d['rarity'].title()
+        if 'price' in d:
+            value = ET.SubElement(item,'value')
+            if d['price'] >= 100:
+                value.text = "{:g} gp".format(d['price']/100)
+            elif d['price'] >= 10:
+                value.text = "{:g} sp".format(d['price']/10)
+            else:
+                value.text = "{:g} cp".format(d['price'])
         if i['type'] in ['consumable']:
             if d['consumableType'] == 'potion':
                 ET.SubElement(item,'type').text = 'P'
@@ -605,6 +610,8 @@ if args.compendium and (len(items)+len(actors)) > 0:
         elif i['type'] in ['equipment']:
             if d['armor']['type'] in ['clothing']:
                 ET.SubElement(item,'type').text = 'LA'
+            elif d['armor']['type'] in ['shield']:
+                ET.SubElement(item,'type').text = 'S'
             elif d['armor']['type'] in ['trinket']:
                 ET.SubElement(item,'type').text = 'G'
             else:
@@ -619,33 +626,38 @@ if args.compendium and (len(items)+len(actors)) > 0:
             elif d['weaponType'] in ["simpleM","martialM"]:
                 ET.SubElement(item,'type').text = 'M'
             else:
-                print("Dont know weapon:",d['weaponType'])
+                if d['weaponType'] not in ['natural']:
+                    print("Dont know weapon:",d['weaponType'])
                 ET.SubElement(item,'type').text = 'WW'
             props = []
-            if d['properties']['amm']:
-                props.append('A')
-            if d['properties']['fin']:
-                props.append('F')
-            if d['properties']['hvy']:
-                props.append('H')
-            if d['properties']['lgt']:
-                props.append('L')
-            if d['properties']['lod']:
-                props.append('LD')
-            if d['properties']['rch']:
-                props.append('R')
-            if d['properties']['spc']:
-                props.append('S')
-            if d['properties']['thr']:
-                props.append('T')
-            if d['properties']['two']:
-                props.append('2H')
-            if d['properties']['ver']:
-                props.append('V')
+            for prop in d['properties'].keys():
+                if prop == 'amm':
+                    props.append('A')
+                if prop == 'fin':
+                    props.append('F')
+                if prop == 'hvy':
+                    props.append('H')
+                if prop == 'lgt':
+                    props.append('L')
+                if prop == 'lod':
+                    props.append('LD')
+                if prop == 'rch':
+                    props.append('R')
+                if prop == 'spc':
+                    props.append('S')
+                if prop == 'thr':
+                    props.append('T')
+                if prop == 'two':
+                    props.append('2H')
+                if prop == 'ver':
+                    props.append('V')
             ET.SubElement(item,'property').text = ','.join(props)
-            ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
-            ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
-            ET.SubElement(item,'dmgType').text = d['damage']['parts'][0][1][0].upper()
+            if d['damage']['parts']:
+                ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
+                if d['damage']['parts'][0][1]:
+                    ET.SubElement(item,'dmgType').text = d['damage']['parts'][0][1][0].upper()
+            if d['damage']['versatile']:
+                ET.SubElement(item,'dmg2').text = d['damage']['versatile']
         elif i['type'] == "loot":
             ET.SubElement(item,'type').text = 'G'
         else:
