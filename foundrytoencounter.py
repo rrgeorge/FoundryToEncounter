@@ -449,7 +449,7 @@ for j in journal:
     order += 1
     print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
     page = ET.SubElement(module,'page', { 'id': str(j['_id']), 'sort': str(j['sort'] or order) } )
-    if j['folder'] != None:
+    if 'folder' in j and j['folder'] != None:
         page.set('parent',j['folder'])
     ET.SubElement(page,'name').text = j['name']
     ET.SubElement(page,'slug').text = slugify(j['name'])
