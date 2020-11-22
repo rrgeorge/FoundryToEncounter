@@ -288,6 +288,25 @@ def createMap(map,mapgroup):
                     scale = 4095/img.width if img.width>=img.height else 4095/img.height
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
                     img.save(os.path.join(tempdir,image["img"]))
+    if 'tokens' in map and len(map['tokens']) > 0:
+        encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': map['_id']})
+        ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
+        ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
+        for token in map['tokens']:
+            combatant = ET.SubElement(encentry,'combatant')
+            ET.SubElement(combatant,'name').text = token['name']
+            ET.SubElement(combatant,'role').text = "hostile" if token['disposition'] < 0 else "friendly" if token['disposition'] > 0 else "neutral"
+            ET.SubElement(combatant,'x').text = str(round((token['x']-map["offsetX"])*map["rescale"]))
+            ET.SubElement(combatant,'y').text = str(round((token['y']-map["offsetY"])*map["rescale"]))
+            actorLinked = False
+            for a in actors:
+                if a['_id'] == token['actorId']:
+                    ET.SubElement(combatant,'monster', { 'ref': "/monster/{}".format(slugify(a['name'])) })
+                    actorLinked = True
+                    break
+            if not actorLinked:
+                ET.SubElement(combatant,'monster', { 'ref': "/monster/{}".format(slugify(token['name'])) })
+
     return mapslug
 
 with zipfile.ZipFile(args.srcfile[0]) as z:
