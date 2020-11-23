@@ -11,7 +11,7 @@ Utility to convert Foundry modules/worlds to an EncounterPlus module.
 
 ## Usage
 
-    usage: foundrytoencounter.py [-h] [-o OUTPUT] srcfile
+    usage: foundrytoencounter.py [-h] [-o OUTPUT] [srcfile] [-gui]
 
     Converts Foundry Modules/Worlds to EncounterPlus Modules
 
@@ -22,6 +22,7 @@ Utility to convert Foundry modules/worlds to an EncounterPlus module.
       -h, --help  show this help message and exit
       -o OUTPUT   output into given output (default: [name].module)
       -c          create compendium content with actors and items
+      -gui        use graphical interface
 
 ## Examples
 
