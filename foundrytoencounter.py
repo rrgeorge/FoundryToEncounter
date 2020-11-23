@@ -97,7 +97,7 @@ def indent(elem, level=0):
     return elem
 def fixRoll(m):
     if m.group(2):
-        return '<a href="/roll/{0}/{1}">{1}</a>'.format(m.group(1),m.group(2))
+        return '<a href="/roll/{0}/{1}">{0}</a>'.format(m.group(1),m.group(2))
     else:
         return '<a href="/roll/{0}">{0}</a>'.format(m.group(1))
 
@@ -331,6 +331,7 @@ def convert(args=args,worker=None):
         actors = []
         items = []
         tables = []
+        playlists = []
         mod = None
         isworld = False
         for filename in z.namelist():
@@ -387,6 +388,14 @@ def convert(args=args,worker=None):
                     while l:
                         table = json.loads(l)
                         tables.append(table)
+                        l = f.readline().decode('utf8')
+                    f.close()
+            elif filename.endswith("data/playlists.db"):
+                with z.open(filename) as f:
+                    l = f.readline().decode('utf8')
+                    while l:
+                        playlist = json.loads(l)
+                        playlists.append(playlist)
                         l = f.readline().decode('utf8')
                     f.close()
         for pack in mod['packs']:
@@ -505,11 +514,48 @@ def convert(args=args,worker=None):
                 for i in items:
                     if i['_id'] == m.group(2):
                         return '<a href="/item/{}">{}</a>'.format(slugify(i['name']),m.group(3) or i['name'])
+            if m.group(1) == "Macro":
+                if m.group(3):
+                    return '<details><summary>{}</summary>This was a Foundry Macro, which cannot be converted.</details>'.format(m.group(3))
+                else:
+                    return '<details><summary>Unsupported</summary>This was a Foundry Macro, which cannot be converted.</details>'
             return m.group(0)
         content.text = re.sub(r'@(.*?)\[(.*?)\](?:\{(.*?)\})?',fixFTag,content.text)
         content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
         if 'img' in j and j['img']:
             content.text += '<img src="{}">'.format(j["img"])
+    order = 0
+    if len(playlists) > 0:
+        if args.gui:
+            worker.outputLog("Converting playlists")
+        playlistsbaseslug = 'playlists'
+        playlistsslug = playlistsbaseslug + str(len([i for i in slugs if playlistsbaseslug in i]))
+        playlistsgroup = str(uuid.uuid5(moduuid,playlistsslug))
+        group = ET.SubElement(module, 'group', {'id': playlistsgroup, 'sort': str(int(maxorder+1))})
+        ET.SubElement(group, 'name').text = "Playlists"
+        ET.SubElement(group, 'slug').text = playlistsslug
+    for p in playlists:
+        order += 1
+        if args.gui:
+            worker.updateProgress(40+(order/len(playlists))*20)
+        print("\rConverting playlists [{}/{}] {:.0f}%".format(order,len(playlists),order/len(playlists)*100),file=sys.stderr,end='')
+        page = ET.SubElement(module,'page', { 'id': str(p['_id']), 'parent': playlistsgroup, 'sort': str(p['sort'] if 'sort' in p and p['sort'] else order) } )
+        ET.SubElement(page,'name').text = p['name']
+        ET.SubElement(page,'slug').text = slugify(p['name'])
+        content = ET.SubElement(page,'content')
+        content.text = "<h1>{}</h1>".format(p['name'])
+        content.text += "<table><thead><tr><td>"
+        content.text += "Track"
+        content.text += '</td>'
+        content.text += "</tr></thead><tbody>"
+        for s in p['sounds']:
+            content.text += '<tr>'
+            content.text += '<td><figure>'
+            content.text += '<figcaption>{}</figcaption>'.format(s['name'])
+            content.text += '<audio controls src="{}"></audio>'.format(s['path'])
+            content.text += '</figure></td>'
+            content.text += '</tr>'
+        content.text += "</tbody></table>"
     order = 0
     if len(tables) > 0:
         if args.gui:
@@ -719,10 +765,12 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'name').text = a['name']
             ET.SubElement(monster,'slug').text = slugify(a['name'])
             ET.SubElement(monster,'size').text = d['traits']['size'][0].upper()
-            ET.SubElement(monster,'type').text = d['details']['type']
-            ET.SubElement(monster,'alignment').text = d['details']['alignment']
+            if 'type' in d['details']:
+                ET.SubElement(monster,'type').text = d['details']['type']
+            if 'alignment' in d['details']:
+                ET.SubElement(monster,'alignment').text = d['details']['alignment']
             ET.SubElement(monster,'ac').text = str(d['attributes']['ac']['value'])
-            if d['attributes']['hp']['formula']:
+            if 'formula' in d['attributes']['hp'] and d['attributes']['hp']['formula']:
                 ET.SubElement(monster,'hp').text = "{} ({})".format(d['attributes']['hp']['value'],d['attributes']['hp']['formula'])
             else:
                 ET.SubElement(monster,'hp').text = "{}".format(d['attributes']['hp']['value'])
@@ -746,9 +794,12 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'passive').text = str(d['skills']['prc']['passive']) if 'passive' in d['skills']['prc'] else ""
             ET.SubElement(monster,'languages').text = ", ".join(d['traits']['languages']['value'])+(" {}".format(d['traits']['languages']['special']) if 'special' in d['traits']['languages'] and d['traits']['languages']['special'] else "")
             ET.SubElement(monster,'description').text = html.unescape(d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
-            ET.SubElement(monster,'cr').text = "{}/{}".format(*d['details']['cr'].as_integer_ratio()) if type(d['details']['cr']) != str and 0<d['details']['cr']<1  else str(d['details']['cr'])
-            ET.SubElement(monster,'source').text = d['details']['source']
-            ET.SubElement(monster,'environments').text = d['details']['environment']
+            if 'cr' in d['details']:
+                ET.SubElement(monster,'cr').text = "{}/{}".format(*d['details']['cr'].as_integer_ratio()) if type(d['details']['cr']) != str and 0<d['details']['cr']<1  else str(d['details']['cr'])
+            if 'source' in d['details']:
+                ET.SubElement(monster,'source').text = d['details']['source']
+            if 'environment' in d['details']:
+                ET.SubElement(monster,'environments').text = d['details']['environment']
             if a['img'] and os.path.exists(a['img']):
                 if os.path.splitext(a["img"])[1] == ".webp":
                     PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"))
