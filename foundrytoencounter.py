@@ -16,6 +16,7 @@ import math
 import PIL.Image
 import PIL.ImageOps
 import random
+import html
 
 # Argument Parser
 parser = argparse.ArgumentParser(
@@ -323,7 +324,7 @@ def convert(args=args,worker=None):
     worldtmp = os.path.join(tempdir,"worlds")
     os.mkdir(worldtmp)
     nsuuid = uuid.UUID("ee9acc6e-b94a-472a-b44d-84dc9ca11b87")
-    with zipfile.ZipFile(args.srcfile[0]) as z:
+    with zipfile.ZipFile(args.srcfile) as z:
         journal = []
         maps = []
         folders = []
@@ -703,7 +704,7 @@ def convert(args=args,worker=None):
             else:
                 print("Dont know item type",i['type'])
             txt = ET.SubElement(item,'text')
-            txt.text = re.sub(r'&nbsp;',r' ',d['description']['value'])
+            txt.text = html.unescape(d['description']['value'])
             txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
             if i['img'] and os.path.exists(i['img']):
                 ET.SubElement(item,'image').text = slugify(i['name'])+"_"+os.path.basename(i['img'])
@@ -744,7 +745,7 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'senses').text = d['traits']['senses']
             ET.SubElement(monster,'passive').text = str(d['skills']['prc']['passive']) if 'passive' in d['skills']['prc'] else ""
             ET.SubElement(monster,'languages').text = ", ".join(d['traits']['languages']['value'])+(" {}".format(d['traits']['languages']['special']) if 'special' in d['traits']['languages'] and d['traits']['languages']['special'] else "")
-            ET.SubElement(monster,'description').text = (d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
+            ET.SubElement(monster,'description').text = html.unescape(d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
             ET.SubElement(monster,'cr').text = "{}/{}".format(*d['details']['cr'].as_integer_ratio()) if type(d['details']['cr']) != str and 0<d['details']['cr']<1  else str(d['details']['cr'])
             ET.SubElement(monster,'source').text = d['details']['source']
             ET.SubElement(monster,'environments').text = d['details']['environment']
@@ -775,7 +776,7 @@ def convert(args=args,worker=None):
                 el = ET.SubElement(monster,typ)
                 ET.SubElement(el,'name').text = trait['name']
                 txt = ET.SubElement(el,'text')
-                txt.text = re.sub(r'&nbsp;',r' ',trait['data']['description']['value'])
+                txt.text = html.unescape(trait['data']['description']['value'])
                 txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
             if len(equip) > 0:
                 trait = ET.SubElement(monster,'trait')
@@ -939,7 +940,7 @@ if args.gui:
             self.output.setVisible(True)
             self.progress.setValue(0)
             self.progress.setVisible(True)
-            args.srcfile = [self.foundryFile]
+            args.srcfile = self.foundryFile
             args.compendium = self.compendium.isChecked()
             self.worker.convert(args)
             self.worker.message.connect(self.outputLog)
