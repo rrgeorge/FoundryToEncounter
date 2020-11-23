@@ -552,7 +552,7 @@ def convert(args=args,worker=None):
             content.text += '<tr>'
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
-            content.text += '<audio controls src="{}"></audio>'.format(s['path'])
+            content.text += '<audio controls src="{}"{}></audio>'.format(s['path']," loop" if s['repeat'] else "")
             content.text += '</figure></td>'
             content.text += '</tr>'
         content.text += "</tbody></table>"
@@ -817,7 +817,10 @@ def convert(args=args,worker=None):
             equip = []
             for trait in a['items']:
                 if trait['type'] == 'feat':
-                    typ = 'trait'
+                    if trait['data']['activation']['type'] in ['action','reaction','legendary']:
+                        typ = trait['data']['activation']['type']
+                    else:
+                        typ = 'trait'
                 elif trait['type'] == 'weapon':
                     typ = 'action'
                 else:
