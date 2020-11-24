@@ -166,6 +166,17 @@ def convert(args=args,worker=None):
         else:
             print(" |> Map Error NO BG FOR: {}".format(map["name"]),file=sys.stderr,end='')
             map["scale"] = 1.0
+            with PIL.Image.new('1', (map["width"], map["height"]), color = 'black') as img:
+                if img.width > 8192 or img.height > 8192:
+                    scale = 8192/img.width if img.width>=img.height else 8192/img.height
+                    img = img.resize((round(img.width*scale),round(img.height*scale)))
+                img.save(os.path.join(tempdir,mapslug+"_bg.png"))
+                if map["height"] != img.height or map["width"] != img.width:
+                    map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
+                else:
+                    map["scale"] = 1.0
+
+                ET.SubElement(mapentry,'image').text = mapslug+"_bg.png"
             if 'thumb' in map and map["thumb"]:
                 imgext = os.path.splitext(os.path.basename(map["img"]))[1]
                 if imgext == ".webp":
@@ -795,7 +806,7 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'wis').text = str(d['abilities']['wis']['value'])
             ET.SubElement(monster,'cha').text = str(d['abilities']['cha']['value'])
             ET.SubElement(monster,'save').text = ", ".join(['{} {:+d}'.format(k.title(),v['save']) for (k,v) in d['abilities'].items() if 'save' in v and (v['save'] != v['mod'] or v['proficient'])])
-            ET.SubElement(monster,'skill').text = ", ".join(['{} {:+d}'.format(skills[k],v['total']) for (k,v) in d['skills'].items() if 'total' in v and v['mod'] != v['total']])
+            ET.SubElement(monster,'skill').text = ", ".join(['{} {:+d}'.format(skills[k],v['total'] if 'total' in v else v['mod'] + v['prof'] if 'prof' in v else v['mod']) for (k,v) in d['skills'].items() if ('total' in v and v['mod'] != v['total']) or ('mod' in d['abilities'][v['ability']] and v['mod'] != d['abilities'][v['ability']]['mod'])])
             ET.SubElement(monster,'immune').text = "; ".join(d['traits']['di']['value'])+(" {}".format(d['traits']['di']['special']) if 'special' in d['traits']['di'] and d['traits']['di']['special'] else "")
             ET.SubElement(monster,'vulnerable').text = "; ".join(d['traits']['dv']['value'])+(" {}".format(d['traits']['dv']['special']) if 'special' in d['traits']['dv'] and d['traits']['dv']['special'] else "")
             ET.SubElement(monster,'resist').text = "; ".join(d['traits']['dr']['value'])+(" {}".format(d['traits']['dr']['special']) if 'special' in d['traits']['dr'] and d['traits']['dr']['special'] else "")
