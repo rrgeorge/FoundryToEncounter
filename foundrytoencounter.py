@@ -319,10 +319,6 @@ def convert(args=args,worker=None):
 
         return mapslug
     tempdir = tempfile.mkdtemp(prefix="convertfoundry_")
-    moduletmp = os.path.join(tempdir,"modules")
-    os.mkdir(moduletmp)
-    worldtmp = os.path.join(tempdir,"worlds")
-    os.mkdir(worldtmp)
     nsuuid = uuid.UUID("ee9acc6e-b94a-472a-b44d-84dc9ca11b87")
     with zipfile.ZipFile(args.srcfile) as z:
         journal = []
@@ -417,9 +413,11 @@ def convert(args=args,worker=None):
         print(mod["title"])
         global moduuid
         if isworld:
-            z.extractall(path=worldtmp)
+            moduletmp = os.path.join(tempdir,"worlds")
         else:
-            z.extractall(path=moduletmp)
+            moduletmp = os.path.join(tempdir,"modules")
+        os.mkdir(moduletmp)
+        z.extractall(path=moduletmp)
     moduuid = uuid.uuid5(nsuuid,mod["name"])
     slugs = []
     module = ET.Element(
@@ -489,11 +487,11 @@ def convert(args=args,worker=None):
         content.text = j['content'] or ""
         def fixLink(m):
             if m.group(2) == "JournalEntry":
-                return '<a href="/page/{}" {} {} {}'.format(m.group(4),m.group(1),m.group(3),m.group(5))
+                return '<a href="/page/{}" {} {} {}>'.format(m.group(4),m.group(1),m.group(3),m.group(5))
             if m.group(2) == "Actor":
                 for a in actors:
                     if a['_id'] == m.group(4):
-                        return '<a href="/monster/{}" {} {} {}'.format(slugify(a['name']),m.group(1),m.group(3),m.group(5))
+                        return '<a href="/monster/{}" {} {} {}>'.format(slugify(a['name']),m.group(1),m.group(3),m.group(5))
             return m.group(0)
         content.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,content.text)
         def fixFTag(m):
@@ -750,7 +748,9 @@ def convert(args=args,worker=None):
             else:
                 print("Dont know item type",i['type'])
             txt = ET.SubElement(item,'text')
-            txt.text = html.unescape(d['description']['value'])
+            txt.text = d['description']['value']
+            txt.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,txt.text)
+            txt.text = html.unescape(txt.text)
             txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
             if i['img'] and os.path.exists(i['img']):
                 ET.SubElement(item,'image').text = slugify(i['name'])+"_"+os.path.basename(i['img'])
@@ -793,7 +793,19 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'senses').text = d['traits']['senses']
             ET.SubElement(monster,'passive').text = str(d['skills']['prc']['passive']) if 'passive' in d['skills']['prc'] else ""
             ET.SubElement(monster,'languages').text = ", ".join(d['traits']['languages']['value'])+(" {}".format(d['traits']['languages']['special']) if 'special' in d['traits']['languages'] and d['traits']['languages']['special'] else "")
-            ET.SubElement(monster,'description').text = html.unescape(d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
+            description = ET.SubElement(monster,'description')
+            description.text = (d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip()
+            description.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,description.text)
+            description.text = re.sub(r'<br.*?>','\n',description.text)
+            description.text = re.sub(r'<hr.*?>','------------------------\n',description.text)
+            description.text = re.sub(r'<h([0-9]).*?>(.*?)</h\1>',r'<b>\2</b>\n',description.text)
+            description.text = re.sub(r'<em.*?>(.*?)</em>',r'<i>\1</i>\n',description.text)
+            description.text = re.sub(r'<strong.*?>(.*?)</strong>',r'<i>\1</i>\n',description.text)
+            description.text = re.sub(r'<blockquote.*?>(.*?)</blockquote>',r'-------------\n\1-------------\n',description.text)
+            description.text = re.sub(r'<tr.*?><td.*?>(.*?)</td>',r'\1',description.text)
+            description.text = re.sub(r'<td.*?>(.*?)</td>',r' | \1',description.text)
+            description.text = re.sub(r'</tr>','\n',description.text)
+            description.text = html.unescape(description.text)
             if 'cr' in d['details']:
                 ET.SubElement(monster,'cr').text = "{}/{}".format(*d['details']['cr'].as_integer_ratio()) if type(d['details']['cr']) != str and 0<d['details']['cr']<1  else str(d['details']['cr'])
             if 'source' in d['details']:
@@ -832,6 +844,7 @@ def convert(args=args,worker=None):
                 txt = ET.SubElement(el,'text')
                 txt.text = html.unescape(trait['data']['description']['value'])
                 txt.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,txt.text)
+                txt.text = re.sub(r'^(<[^>]*?>)*{}\.(<\/[^>]*?>)*\.?'.format(re.escape(trait['name'])),'',txt.text)
             if len(equip) > 0:
                 trait = ET.SubElement(monster,'trait')
                 ET.SubElement(trait,'name').text = "Equipment"
