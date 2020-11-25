@@ -668,6 +668,7 @@ def convert(args=args,worker=None):
             worker.outputLog("Generating compendium data")
         def fixHTMLContent(text):
             text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,text)
+            text = re.sub(r'<img(.*?)src="?(.*?)"?( .*?)?>',r'<a\1href="\2"\3>Image</a>',text)
             text = re.sub(r'<br.*?>','\n',text)
             text = re.sub(r'</?p.*?>','',text)
             text = re.sub(r'<hr.*?>','------------------------\n',text)
