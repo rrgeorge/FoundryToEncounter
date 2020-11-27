@@ -111,6 +111,7 @@ def convert(args=args,worker=None):
         slugs.append(mapslug)
         if not map["img"] and map["tiles"][0]["width"] >= map["width"] and map["tiles"][0]["height"] >= map["height"]:
             bg = map["tiles"].pop(0)
+            bg["img"] = urllib.parse.unquote(bg["img"])
             imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
             if not imgext:
                 imgext = ".png"
@@ -144,6 +145,7 @@ def convert(args=args,worker=None):
         ET.SubElement(mapentry,'gridOffsetY').text = str(round(map['shiftY']))
 
         if map["img"]:
+            map["img"] = urllib.parse.unquote(map["img"])
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
             if imgext == ".webp":
                 ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+".png"
@@ -276,6 +278,7 @@ def convert(args=args,worker=None):
         if 'tiles' in map:
             for i in range(len(map["tiles"])):
                 image = map["tiles"][i]
+                image["img"] = urllib.parse.unquote(image["img"])
                 print("\rtiles [{}/{}]".format(i,len(map["tiles"])),file=sys.stderr,end='')
                 tile = ET.SubElement(mapentry,'tile')
                 ET.SubElement(tile,'x').text = str(round((image["x"]-map["offsetX"]+(image["width"]*image["scale"]/2))*map["rescale"]))
@@ -342,14 +345,14 @@ def convert(args=args,worker=None):
         mod = None
         isworld = False
         for filename in z.namelist():
-            if filename.endswith("world.json"):
+            if os.path.basename(filename) == "world.json":
                 with z.open(filename) as f:
                     mod = json.load(f)
                 isworld = True
-            elif not mod and filename.endswith("module.json"):
+            elif not mod and os.path.basename(filename) == "module.json":
                 with z.open(filename) as f:
                     mod = json.load(f)
-            elif filename.endswith("data/folders.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'folders.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -357,7 +360,7 @@ def convert(args=args,worker=None):
                         folders.append(folder)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/journal.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'journal.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -365,7 +368,7 @@ def convert(args=args,worker=None):
                         journal.append(jrn)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/scenes.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'scenes.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -373,7 +376,7 @@ def convert(args=args,worker=None):
                         maps.append(scene)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/actors.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'actors.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -381,7 +384,7 @@ def convert(args=args,worker=None):
                         actors.append(actor)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/items.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'items.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -389,7 +392,7 @@ def convert(args=args,worker=None):
                         items.append(item)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/tables.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'tables.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -397,7 +400,7 @@ def convert(args=args,worker=None):
                         tables.append(table)
                         l = f.readline().decode('utf8')
                     f.close()
-            elif filename.endswith("data/playlists.db"):
+            elif os.path.basename(os.path.dirname(filename)) == 'data' and os.path.basename(filename) == 'playlists.db':
                 with z.open(filename) as f:
                     l = f.readline().decode('utf8')
                     while l:
@@ -631,7 +634,7 @@ def convert(args=args,worker=None):
         ET.SubElement(group, 'slug').text = mapsslug
         for map in maps:
             if not modimage.text and map["name"].lower() in ["start","start here","title page","title","landing","landing page"]:
-                modimage.text = map["img"] or map["tiles"][0]["img"]
+                modimage.text = urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
             if not map["img"] and len(map["tiles"]) == 0:
                 continue
             mapcount += 1
@@ -774,6 +777,7 @@ def convert(args=args,worker=None):
             else:
                 print("Dont know item type",i['type'])
             ET.SubElement(item,'text').text=fixHTMLContent(d['description']['value'])
+            if i['img']: i['img'] = urllib.parse.unquote(i['img'])
             if i['img'] and os.path.exists(i['img']):
                 ET.SubElement(item,'image').text = slugify(i['name'])+"_"+os.path.basename(i['img'])
                 shutil.copy(i['img'],os.path.join(tempdir,"items",slugify(i['name'])+"_"+os.path.basename(i['img'])))
@@ -822,6 +826,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(monster,'source').text = d['details']['source']
             if 'environment' in d['details']:
                 ET.SubElement(monster,'environments').text = d['details']['environment']
+            if a['img']: a['img'] = urllib.parse.unquote(a['img'])
             if a['img'] and os.path.exists(a['img']):
                 if os.path.splitext(a["img"])[1] == ".webp":
                     PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"))
@@ -829,6 +834,7 @@ def convert(args=args,worker=None):
                 else:
                     ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.basename(a['img'])
                     shutil.copy(a['img'],os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.basename(a['img'])))
+            if a['token']['img']: a['token']['img'] = urllib.parse.unquote(a['token']['img'])
             if a['token']['img'] and os.path.exists(a['token']['img']):
                 if os.path.splitext(a['token']["img"])[1] == ".webp":
                     PIL.Image.open(a['token']["img"]).save(os.path.join(tempdir,"monsters","token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"))
