@@ -699,11 +699,11 @@ def convert(args=args,worker=None):
             d = i['data']
             ET.SubElement(item,'name').text = i['name']
             ET.SubElement(item,'slug').text = slugify(i['name'])
-            if 'weight' in d:
+            if 'weight' in d and d['weight']:
                 ET.SubElement(item,'weight').text = str(d['weight'])
-            if 'rarity' in d:
+            if 'rarity' in d and d['rarity']:
                 ET.SubElement(item,'rarity').text = d['rarity'].title()
-            if 'price' in d:
+            if 'price' in d and d['price']:
                 value = ET.SubElement(item,'value')
                 if d['price'] >= 100:
                     value.text = "{:g} gp".format(d['price']/100)
