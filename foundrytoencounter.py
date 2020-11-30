@@ -911,6 +911,8 @@ def convert(args=args,worker=None):
         worker.outputLog("Finished.")
 
 if args.gui:
+    import icon
+    from PyQt5.QtGui import QIcon
     from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject
     from PyQt5.QtWidgets import QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox,QMessageBox,QMenuBar,QAction
 
@@ -1022,7 +1024,7 @@ if args.gui:
             self.output.clear()
 
         def openFile(self):
-            fileName = QFileDialog.getOpenFileName(self,"Open Foundry ZIP File","","Foundry world or module Archive (*.zip)")
+            fileName = QFileDialog.getOpenFileName(self,"Open Foundry ZIP File","","Foundry Archive (*.zip)")
             if not fileName[0] or not os.path.exists(fileName[0]):
                 self.clearFiles()
                 return
@@ -1071,6 +1073,7 @@ if args.gui:
             self.worker.convert(args)
 
     app = QApplication([])
+    app.setWindowIcon(QIcon(':/Icon.png'))
     gui = GUI()
     app.exec_()
 else:
