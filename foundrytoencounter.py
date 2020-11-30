@@ -977,8 +977,8 @@ if args.gui:
             openAct.triggered.connect(self.openFile)
 
             fileMenu = menubar.addMenu('&File')
-            fileMenu.addAction(exitAct)
             fileMenu.addAction(openAct)
+            fileMenu.addAction(exitAct)
 
             aboutAct = QAction('&About', self)
             aboutAct.setStatusTip('About FoundryToEncounter')

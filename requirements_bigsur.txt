@@ -1,0 +1,5 @@
+Pillow==8.0.1
+PyQt5==5.13
+PyQt5-sip==12.8.1
+python-slugify==4.0.1
+text-unidecode==1.3
