@@ -951,7 +951,7 @@ if args.gui:
             self.opacity.setOpacity(0.1) 
             self.icon = QLabel(Dialog)
             self.icon.setGeometry(QRect(50, 0, 300, 300))
-            self.icon.setPixmap(QPixmap("Icon.png").scaled(300,300))
+            self.icon.setPixmap(QPixmap(":/Icon.png").scaled(300,300))
             self.icon.setGraphicsEffect(self.opacity)
             #self.icon.show()
             self.title = QLabel(Dialog)
