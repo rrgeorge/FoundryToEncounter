@@ -726,6 +726,8 @@ def convert(args=args,worker=None):
                     ET.SubElement(item,'type').text = 'P'
                 elif d['consumableType'] == 'wand':
                     ET.SubElement(item,'type').text = 'WD'
+                elif d['consumableType'] == 'scroll':
+                    ET.SubElement(item,'type').text = 'SC'
                 elif d['consumableType'] == 'food':
                     ET.SubElement(item,'type').text = 'G'
                 else:
@@ -734,6 +736,8 @@ def convert(args=args,worker=None):
             elif i['type'] in ['equipment']:
                 if d['armor']['type'] in ['clothing']:
                     ET.SubElement(item,'type').text = 'LA'
+                elif d['armor']['type'] in ['medium']:
+                    ET.SubElement(item,'type').text = 'MA'
                 elif d['armor']['type'] in ['shield']:
                     ET.SubElement(item,'type').text = 'S'
                 elif d['armor']['type'] in ['trinket']:
@@ -749,6 +753,8 @@ def convert(args=args,worker=None):
                     ET.SubElement(item,'range').text = "{}/{} {}".format(d['range']['value'],d['range']['long'],d['range']['units'])
                 elif d['weaponType'] in ["simpleM","martialM"]:
                     ET.SubElement(item,'type').text = 'M'
+                elif 'staff' in d and d['staff']:
+                    ET.SubElement(item,'type').text = 'ST'
                 else:
                     if d['weaponType'] not in ['natural']:
                         print("Dont know weapon:",d['weaponType'])
