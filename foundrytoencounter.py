@@ -912,9 +912,9 @@ def convert(args=args,worker=None):
 
 if args.gui:
     import icon
-    from PyQt5.QtGui import QIcon
-    from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject
-    from PyQt5.QtWidgets import QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox,QMessageBox,QMenuBar,QAction
+    from PyQt5.QtGui import QIcon,QPixmap
+    from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject,Qt
+    from PyQt5.QtWidgets import *#QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox,QMessageBox,QMenuBar,QAction
 
     class Worker(QThread):
         def __init__(self,parent = None):
@@ -940,29 +940,41 @@ if args.gui:
         def setupUi(self, Dialog):
             Dialog.setObjectName("Dialog")
             Dialog.resize(400, 300)
+            Dialog.setFixedSize(400, 300)
+            self.opacity = QGraphicsOpacityEffect()
+            self.opacity.setOpacity(0.1) 
+            self.icon = QLabel(Dialog)
+            self.icon.setGeometry(QRect(50, 0, 300, 300))
+            self.icon.setPixmap(QPixmap("Icon.png").scaled(300,300))
+            self.icon.setGraphicsEffect(self.opacity)
+            #self.icon.show()
+            self.title = QLabel(Dialog)
+            self.title.setGeometry(QRect(30, 10, 340, 30))
+            self.title.setAlignment(Qt.AlignCenter)
+            self.title.setText("<h1>Foundry to Encounter</h1>")
             self.progress = QProgressBar(Dialog)
             self.progress.setEnabled(True)
-            self.progress.setGeometry(QRect(30, 210, 341, 23))
+            self.progress.setGeometry(QRect(30, 210, 340, 23))
             self.progress.setVisible(False)
             self.progress.setProperty("value", 0)
             self.progress.setObjectName("progress")
             self.browseButton = QPushButton(Dialog)
-            self.browseButton.setGeometry(QRect(140, 50, 113, 32))
+            self.browseButton.setGeometry(QRect(140, 50, 120, 32))
             self.browseButton.setObjectName("browseButton")
             self.compendium = QCheckBox(Dialog)
             self.compendium.setGeometry(QRect(30, 240, 171, 31))
             self.compendium.setObjectName("compendium")
             self.label = QLabel(Dialog)
-            self.label.setGeometry(QRect(30, 80, 341, 21))
+            self.label.setGeometry(QRect(30, 80, 340, 21))
             self.label.setVisible(False)
             self.label.setText("")
             self.label.setObjectName("label")
             self.output = QTextEdit(Dialog)
-            self.output.setGeometry(QRect(30, 100, 331, 101))
+            self.output.setGeometry(QRect(30, 100, 340, 100))
             self.output.setVisible(False)
             self.output.setObjectName("output")
             self.convert = QPushButton(Dialog)
-            self.convert.setGeometry(QRect(260, 240, 113, 32))
+            self.convert.setGeometry(QRect(260, 240, 110, 32))
             self.convert.setObjectName("convert")
             self.convert.setEnabled(False)
 
