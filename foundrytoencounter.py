@@ -154,12 +154,18 @@ def convert(args=args,worker=None):
             with PIL.Image.open(map["img"]) as img:
                 if img.width > 8192 or img.height > 8192:
                     scale = 8192/img.width if img.width>=img.height else 8192/img.height
+                    if args.gui:
+                        worker.outputLog(" - Resizing map from {}x{} to {}x{}".format(img.width,img.height,round(img.width*scale),round(img.height*scale)))
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
                     if imgext == ".webp":
+                        if args.gui:
+                            worker.outputLog(" - Converting map from webp to png")
                         img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+".png"))
                     else:
                         img.save(os.path.join(tempdir,map["img"]))
                 elif imgext == ".webp":
+                        if args.gui:
+                            worker.outputLog(" - Converting map from webp to png")
                         img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+".png"))
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
@@ -171,6 +177,8 @@ def convert(args=args,worker=None):
             with PIL.Image.new('1', (map["width"], map["height"]), color = 'black') as img:
                 if img.width > 8192 or img.height > 8192:
                     scale = 8192/img.width if img.width>=img.height else 8192/img.height
+                    if args.gui:
+                        worker.outputLog(" - Resizing map from {}x{} to {}x{}".format(img.width,img.height,round(img.width*scale),round(img.height*scale)))
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
                 img.save(os.path.join(tempdir,mapslug+"_bg.png"))
                 if map["height"] != img.height or map["width"] != img.width:
@@ -305,6 +313,8 @@ def convert(args=args,worker=None):
                     if img.width > 4096 or img.height > 4096:
                         scale = 4095/img.width if img.width>=img.height else 4095/img.height
                         img = img.resize((round(img.width*scale),round(img.height*scale)))
+                    if args.gui:
+                        worker.outputLog(" - Converting tile from webp to png")
                     img.save(os.path.join(tempdir,os.path.splitext(image["img"])[0]+".png"))
                 else:
                     ET.SubElement(asset,'resource').text = image["img"]
@@ -476,7 +486,7 @@ def convert(args=args,worker=None):
     for f in folders:
         order += 1
         if args.gui:
-            worker.updateProgress((order/len(folders))*20)
+            worker.updateProgress((order/len(folders))*5)
         print("\rCreating Folders [{}/{}] {:.0f}%".format(order,len(folders),order/len(folders)*100),file=sys.stderr,end='')
         if f['type'] not in ["JournalEntry","RollTable"]:
             continue
@@ -490,7 +500,7 @@ def convert(args=args,worker=None):
     for j in journal:
         order += 1
         if args.gui:
-            worker.updateProgress(20+(order/len(journal))*20)
+            worker.updateProgress(5+(order/len(journal))*10)
         print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(j['_id']), 'sort': str(j['sort'] or order) } )
         if 'folder' in j and j['folder'] != None:
@@ -549,7 +559,7 @@ def convert(args=args,worker=None):
     for p in playlists:
         order += 1
         if args.gui:
-            worker.updateProgress(40+(order/len(playlists))*20)
+            worker.updateProgress(15+(order/len(playlists))*10)
         print("\rConverting playlists [{}/{}] {:.0f}%".format(order,len(playlists),order/len(playlists)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(p['_id']), 'parent': playlistsgroup, 'sort': str(p['sort'] if 'sort' in p and p['sort'] else order) } )
         ET.SubElement(page,'name').text = p['name']
@@ -581,7 +591,7 @@ def convert(args=args,worker=None):
     for t in tables:
         order += 1
         if args.gui:
-            worker.updateProgress(40+(order/len(tables))*20)
+            worker.updateProgress(25+(order/len(tables))*10)
         print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
         ET.SubElement(page,'name').text = t['name']
@@ -640,7 +650,7 @@ def convert(args=args,worker=None):
             mapcount += 1
             sys.stderr.write("\033[K")
             if args.gui:
-                worker.updateProgress(60+(mapcount/len(maps))*20)
+                worker.updateProgress(35+(mapcount/len(maps))*35)
             print("\rConverting maps [{}/{}] {:.0f}%".format(mapcount,len(maps),mapcount/len(maps)*100),file=sys.stderr,end='')
             createMap(map,mapgroup)
     if not modimage.text and len(maps) > 0:
@@ -908,7 +918,7 @@ def convert(args=args,worker=None):
 
 if args.gui:
     from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject
-    from PyQt5.QtWidgets import QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox
+    from PyQt5.QtWidgets import QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox,QMessageBox,QMenuBar,QAction
 
     class Worker(QThread):
         def __init__(self,parent = None):
@@ -958,6 +968,31 @@ if args.gui:
             self.convert = QPushButton(Dialog)
             self.convert.setGeometry(QRect(260, 240, 113, 32))
             self.convert.setObjectName("convert")
+            self.convert.setEnabled(False)
+
+            menubar = QMenuBar(self)
+
+            exitAct = QAction('&Exit', self)
+            exitAct.setShortcut('Ctrl+Q')
+            exitAct.setStatusTip('Exit application')
+            exitAct.triggered.connect(app.quit)
+
+            openAct = QAction('&Open…', self)
+            openAct.setShortcut('Ctrl+O')
+            openAct.setStatusTip('Open Foundry ZIP File')
+            openAct.triggered.connect(self.openFile)
+
+            fileMenu = menubar.addMenu('&File')
+            fileMenu.addAction(openAct)
+            fileMenu.addAction(exitAct)
+
+            aboutAct = QAction('&About', self)
+            aboutAct.setStatusTip('About FoundryToEncounter')
+            aboutAct.triggered.connect(self.showAbout)
+
+            helpMenu = menubar.addMenu('&Help')
+            helpMenu.addAction(aboutAct)
+
             self.retranslateUi(Dialog)
             QMetaObject.connectSlotsByName(Dialog)
         def retranslateUi(self, Dialog):
@@ -975,13 +1010,17 @@ if args.gui:
             self.setupUi(self)
             self.browseButton.clicked.connect(self.openFile)
             self.convert.clicked.connect(self.saveFile)
+            self.worker.message.connect(self.outputLog)
+            self.worker.progress.connect(self.updateProgress)
             self.show()
+            self.openFile()
 
-        def clearFiles():
+        def clearFiles(self):
             self.foundryFile = None
             self.outputFile = ""
             self.label.setText("")
             self.label.setVisible(False)
+            self.convert.setEnabled(False)
 
         def setFiles(self,filename,name):
             self.foundryFile = filename
@@ -997,11 +1036,11 @@ if args.gui:
                 isworld = False
                 mod = None
                 for filename in z.namelist():
-                    if filename.endswith("world.json"):
+                    if os.path.basename(filename) == "world.json":
                         with z.open(filename) as f:
                             mod = json.load(f)
                         isworld = True
-                    elif not mod and filename.endswith("module.json"):
+                    elif not mod and os.path.basename(filename) == "module.json":
                         with z.open(filename) as f:
                             mod = json.load(f)
             if mod:
@@ -1011,9 +1050,13 @@ if args.gui:
                     self.label.setText("Foundry Module: {}".format(mod["title"]))
                 self.label.setVisible(True)
                 self.setFiles(fileName[0],mod["name"])
+                self.convert.setEnabled(True)
             else:
+                QMessageBox.warning(self,"Invalid","No foundry data was found in this zip file")
                 self.clearFiles()
-
+                self.openFile()
+        def showAbout(self):
+            QMessageBox.about(self,"About FoundryToEncounter","This utility converts a Foundry world or module to an EncounterPlus module.")
         def outputLog(self,text):
             self.output.append(text)
         def updateProgress(self,pct):
@@ -1026,13 +1069,12 @@ if args.gui:
                 return
             args.output = self.outputFile
             self.output.setVisible(True)
+            self.output.clear()
             self.progress.setValue(0)
             self.progress.setVisible(True)
             args.srcfile = self.foundryFile
             args.compendium = self.compendium.isChecked()
             self.worker.convert(args)
-            self.worker.message.connect(self.outputLog)
-            self.worker.progress.connect(self.updateProgress)
 
     app = QApplication([])
     gui = GUI()
