@@ -327,8 +327,8 @@ def convert(args=args,worker=None):
                 print("\rlights [{}/{}]".format(i,len(map["lights"])),file=sys.stderr,end='')
                 light = map["lights"][i]
                 tile = ET.SubElement(mapentry,'tile')
-                ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"]+25*map["rescale"])))
-                ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"]+25*map["rescale"])))
+                ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"])))
+                ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"])))
                 ET.SubElement(tile,'zIndex').text = str(0)
                 ET.SubElement(tile,'width').text = str(round(50*map["rescale"]))
                 ET.SubElement(tile,'height').text = str(round(50*map["rescale"]))
