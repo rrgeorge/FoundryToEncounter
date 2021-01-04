@@ -322,6 +322,32 @@ def convert(args=args,worker=None):
                         scale = 4095/img.width if img.width>=img.height else 4095/img.height
                         img = img.resize((round(img.width*scale),round(img.height*scale)))
                         img.save(os.path.join(tempdir,image["img"]))
+        if 'lights' in map:
+            for i in range(len(map["lights"])):
+                print("\rlights [{}/{}]".format(i,len(map["lights"])),file=sys.stderr,end='')
+                light = map["lights"][i]
+                tile = ET.SubElement(mapentry,'tile')
+                ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"]+25*map["rescale"])))
+                ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"]+25*map["rescale"])))
+                ET.SubElement(tile,'zIndex').text = str(0)
+                ET.SubElement(tile,'width').text = str(round(50*map["rescale"]))
+                ET.SubElement(tile,'height').text = str(round(50*map["rescale"]))
+                ET.SubElement(tile,'opacity').text = "1.0"
+                ET.SubElement(tile,'rotation').text = str(0)
+                ET.SubElement(tile,'locked').text = "YES"
+                ET.SubElement(tile,'layer').text = "dm"
+                ET.SubElement(tile,'hidden').text = "YES"
+
+                asset = ET.SubElement(tile,'asset', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)))})
+                ET.SubElement(asset,'name').text = "Light {}".format(i+1)
+
+                lightel = ET.SubElement(tile,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
+                ET.SubElement(lightel,'radiusMax').text = str(light["dim"]*map["gridDistance"])
+                ET.SubElement(lightel,'radiusMin').text = str(light["bright"]*map["gridDistance"])
+                ET.SubElement(lightel,'color').text = light["tintColor"] if light["tintColor"] else "#ffffff"
+                ET.SubElement(lightel,'opacity').text = str(light["tintAlpha"])
+                ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
+
         if 'tokens' in map and len(map['tokens']) > 0:
             encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': map['_id']})
             ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
@@ -643,6 +669,8 @@ def convert(args=args,worker=None):
         ET.SubElement(group, 'name').text = "Maps"
         ET.SubElement(group, 'slug').text = mapsslug
         for map in maps:
+            if '$$deleted' in map and map['$$deleted']:
+                continue
             if not modimage.text and map["name"].lower() in ["start","start here","title page","title","landing","landing page"]:
                 modimage.text = urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
             if not map["img"] and len(map["tiles"]) == 0:
@@ -655,6 +683,8 @@ def convert(args=args,worker=None):
             createMap(map,mapgroup)
     if not modimage.text and len(maps) > 0:
         map = random.choice(maps)
+        while '$$deleted' in map and mapcount > 0:
+            map = random.choice(maps)
         if args.gui:
             worker.outputLog("Generating cover image")
         print("\rGenerating cover image",file=sys.stderr,end='')
