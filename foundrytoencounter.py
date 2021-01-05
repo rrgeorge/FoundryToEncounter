@@ -103,8 +103,12 @@ def fixRoll(m):
 
 def convert(args=args,worker=None):
     def createMap(map,mapgroup):
-        map["offsetX"] = (map["width"] + math.ceil(0.5 * map["width"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["width"]) * 0.5
-        map["offsetY"] = (map["height"] + math.ceil(0.5 * map["height"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["height"]) * 0.5
+        if "padding" in map:
+            map["offsetX"] = math.ceil((map["padding"]*map["width"])/map["grid"])*map["grid"]
+            map["offsetY"] = math.ceil((map["padding"]*map["height"])/map["grid"])*map["grid"]
+        else:
+            map["offsetX"] = (map["width"] + math.ceil(0.5 * map["width"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["width"]) * 0.5
+            map["offsetY"] = (map["height"] + math.ceil(0.5 * map["height"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["height"]) * 0.5
 
         mapbaseslug = slugify(map['name'])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
@@ -226,6 +230,8 @@ def convert(args=args,worker=None):
                                     continue
                                 elif p['ds'] == 2 and door.text != 'locked':
                                     continue
+                        elif wType.text in ['door','secretDoor']:
+                            continue
                         elif p['move'] == 0 and p['sense'] == 1 and wType.text != 'ethereal':
                             continue
                         elif p['move'] == 1 and p['sense'] == 0 and wType.text != 'invisible':
