@@ -614,7 +614,7 @@ def convert(args=args,worker=None):
             content.text += '<tr>'
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
-            content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,s['path']),mime=True))
+            content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
             content.text += '</figure></td>'
             content.text += '</tr>'
         content.text += "</tbody></table>"
