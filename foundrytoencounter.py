@@ -17,6 +17,7 @@ import PIL.Image
 import PIL.ImageOps
 import random
 import html
+import magic
 
 # Argument Parser
 parser = argparse.ArgumentParser(
@@ -350,7 +351,7 @@ def convert(args=args,worker=None):
                 lightel = ET.SubElement(tile,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
                 ET.SubElement(lightel,'radiusMax').text = str(light["dim"]*map["gridDistance"])
                 ET.SubElement(lightel,'radiusMin').text = str(light["bright"]*map["gridDistance"])
-                ET.SubElement(lightel,'color').text = light["tintColor"] if light["tintColor"] else "#ffffff"
+                ET.SubElement(lightel,'color').text = light["tintColor"] if "tintColor" in light and light["tintColor"] else "#ffffff"
                 ET.SubElement(lightel,'opacity').text = str(light["tintAlpha"])
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
 
@@ -450,22 +451,23 @@ def convert(args=args,worker=None):
                         playlists.append(playlist)
                         l = f.readline().decode('utf8')
                     f.close()
-        for pack in mod['packs']:
-            pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
-            with z.open(mod['name']+'/'+pack['path']) as f:
-                l = f.readline().decode('utf8')
-                while l:
-                    if pack['entity'] == 'JournalEntry':
-                        jrn = json.loads(l)
-                        journal.append(jrn)
-                    elif pack['entity'] == 'Scene':
-                        scene = json.loads(l)
-                        maps.append(scene)
-                    elif pack['entity'] == 'Actor':
-                        actor = json.loads(l)
-                        actors.append(actor)
+        if not isworld:
+            for pack in mod['packs']:
+                pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
+                with z.open(mod['name']+'/'+pack['path']) as f:
                     l = f.readline().decode('utf8')
-                f.close()
+                    while l:
+                        if pack['entity'] == 'JournalEntry':
+                            jrn = json.loads(l)
+                            journal.append(jrn)
+                        elif pack['entity'] == 'Scene':
+                            scene = json.loads(l)
+                            maps.append(scene)
+                        elif pack['entity'] == 'Actor':
+                            actor = json.loads(l)
+                            actors.append(actor)
+                        l = f.readline().decode('utf8')
+                    f.close()
         print(mod["title"])
         global moduuid
         if isworld:
@@ -493,26 +495,32 @@ def convert(args=args,worker=None):
     slug = ET.SubElement(module, 'slug')
     slug.text = slugify(mod['title'])
     description = ET.SubElement(module, 'description')
-    description.text = re.sub(r'<.*?>','',mod['description'])
+    description.text = re.sub(r'<.*?>','',html.unescape(mod['description']))
     modimage = ET.SubElement(module, 'image')
     order = 0
     cwd = os.getcwd()
     os.chdir(tempdir)
     maxorder = 0
+    sort = 0
     for f in folders:
-        f['sort'] = 0 if 'sort' not in f or f['sort'] == None else f['sort']
+        f['sort'] = sort if 'sort' not in f or f['sort'] == None else f['sort']
         if f['sort'] > maxorder:
             maxorder = f['sort']
+        sort += 1
+    sort = 0
     for j in journal:
-        j['sort'] = 0 if 'sort' not in j or j['sort'] == None else j['sort']
+        j['sort'] = sort if 'sort' not in j or j['sort'] == None else j['sort']
         if 'flags' in j and 'R20Converter' in j['flags'] and 'handout-order' in j['flags']['R20Converter']:
             j['sort'] += j['flags']['R20Converter']['handout-order']
         if j['sort'] > maxorder:
             maxorder = j['sort']
+        sort += 1
+    sort = 0
     for m in maps:
-        m['sort'] = 0 if 'sort' not in m or m['sort'] == None else m['sort']
+        m['sort'] = sort if 'sort' not in m or m['sort'] == None else m['sort']
         if m['sort'] and m['sort'] > maxorder:
             maxorder = m['sort']
+        sort += 1
     if args.gui and len(folders)>0:
         worker.outputLog("Converting folders")
     for f in folders:
@@ -606,7 +614,7 @@ def convert(args=args,worker=None):
             content.text += '<tr>'
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
-            content.text += '<audio controls src="{}"{}></audio>'.format(s['path']," loop" if s['repeat'] else "")
+            content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,s['path']),mime=True))
             content.text += '</figure></td>'
             content.text += '</tr>'
         content.text += "</tbody></table>"
@@ -677,7 +685,7 @@ def convert(args=args,worker=None):
         for map in maps:
             if '$$deleted' in map and map['$$deleted']:
                 continue
-            if not modimage.text and map["name"].lower() in ["start","start here","title page","title","landing","landing page"]:
+            if not modimage.text and map["name"].lower() in ["intro","start","start here","title page","title","landing","landing page"]:
                 modimage.text = urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
             if not map["img"] and len(map["tiles"]) == 0:
                 continue
@@ -711,6 +719,20 @@ def convert(args=args,worker=None):
     print("\rWriting XML",file=sys.stderr,end='')
     tree = ET.ElementTree(indent(module, 1))
     tree.write(os.path.join(tempdir,"module.xml"), xml_declaration=True, short_empty_elements=False, encoding='utf-8')
+    if 'styles' in mod:
+        if not os.path.exists(os.path.join(tempdir,"assets")):
+            os.mkdir(os.path.join(tempdir,"assets"))
+        if not os.path.exists(os.path.join(tempdir,"assets","css")):
+            os.mkdir(os.path.join(tempdir,"assets","css"))
+        for style in mod['styles']:
+            if os.path.exists(os.path.join(moduletmp,mod["name"],style)):
+                with open(os.path.join(tempdir,"assets","css","custom.css"),"a") as f:
+                    with open(os.path.join(moduletmp,mod["name"],style)) as css:
+                        for l in css:
+                            f.write(l)
+        if os.path.exists(os.path.join(moduletmp,mod["name"],"fonts")):
+            os.rename(os.path.join(moduletmp,mod["name"],"fonts"),os.path.join(tempdir,"assets","fonts"))
+
     if args.compendium and (len(items)+len(actors)) > 0:
         if args.gui:
             worker.updateProgress(75)
