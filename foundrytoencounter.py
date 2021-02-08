@@ -1035,17 +1035,17 @@ if args.gui:
     class GUI(QDialog):
         def setupUi(self, Dialog):
             Dialog.setObjectName("Dialog")
-            Dialog.resize(400, 300)
-            Dialog.setFixedSize(400, 300)
+            Dialog.resize(400, 350)
+            Dialog.setFixedSize(400, 350)
             self.opacity = QGraphicsOpacityEffect()
             self.opacity.setOpacity(0.1) 
             self.icon = QLabel(Dialog)
-            self.icon.setGeometry(QRect(50, 0, 300, 300))
+            self.icon.setGeometry(QRect(50, 25, 300, 300))
             self.icon.setPixmap(QPixmap(":/Icon.png").scaled(300,300))
             self.icon.setGraphicsEffect(self.opacity)
             #self.icon.show()
             self.title = QLabel(Dialog)
-            self.title.setGeometry(QRect(30, 10, 340, 30))
+            self.title.setGeometry(QRect(30, 20, 340, 30))
             self.title.setAlignment(Qt.AlignCenter)
             self.title.setText("<h1>Foundry to Encounter</h1>")
             self.progress = QProgressBar(Dialog)
@@ -1060,6 +1060,9 @@ if args.gui:
             self.compendium = QCheckBox(Dialog)
             self.compendium.setGeometry(QRect(30, 240, 171, 31))
             self.compendium.setObjectName("compendium")
+            self.jpeg = QCheckBox(Dialog)
+            self.jpeg.setGeometry(QRect(30, 260, 340, 31))
+            self.jpeg.setObjectName("jpeg")
             self.label = QLabel(Dialog)
             self.label.setGeometry(QRect(30, 80, 340, 21))
             self.label.setVisible(False)
@@ -1070,7 +1073,7 @@ if args.gui:
             self.output.setVisible(False)
             self.output.setObjectName("output")
             self.convert = QPushButton(Dialog)
-            self.convert.setGeometry(QRect(260, 240, 110, 32))
+            self.convert.setGeometry(QRect(140, 300, 120, 32))
             self.convert.setObjectName("convert")
             self.convert.setEnabled(False)
 
@@ -1104,6 +1107,7 @@ if args.gui:
             Dialog.setWindowTitle(_translate("Dialog", "Foundry to Encounter"))
             self.browseButton.setText(_translate("Dialog", "Browse..."))
             self.compendium.setText(_translate("Dialog", "Include Compendium"))
+            self.jpeg.setText(_translate("Dialog", "Convert WebP to JPG instead of PNG"))
             self.convert.setText(_translate("Dialog", "Convert"))
         def __init__(self):
             super(GUI, self).__init__()
@@ -1178,6 +1182,11 @@ if args.gui:
             self.progress.setVisible(True)
             args.srcfile = self.foundryFile
             args.compendium = self.compendium.isChecked()
+            if self.jpeg.isChecked():
+                args.jpeg = ".jpeg"
+            else:
+                args.jpeg = ".png"
+            print(args)
             self.worker.convert(args)
 
     app = QApplication([])
