@@ -23,6 +23,7 @@ Utility to convert Foundry modules/worlds to an EncounterPlus module.
       -h, --help  show this help message and exit
       -o OUTPUT   output into given output (default: [name].module)
       -c          create compendium content with actors and items
+      -j          convert WebP to JPG instead of PNG
       -gui        use graphical interface
 
 ## Examples

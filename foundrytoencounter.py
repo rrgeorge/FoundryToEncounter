@@ -35,6 +35,13 @@ parser.add_argument(
     const=True,
     default=False,
     help="create compendium content with actors and items")
+parser.add_argument(
+    '-j',
+    dest="jpeg",
+    action='store_const',
+    const=".jpg",
+    default=".png",
+    help="convert WebP to JPG instead of PNG")
 parserg = parser.add_mutually_exclusive_group()
 parserg.add_argument(
     dest="srcfile",
@@ -119,10 +126,11 @@ def convert(args=args,worker=None):
             bg["img"] = urllib.parse.unquote(bg["img"])
             imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
             if not imgext:
-                imgext = ".png"
+                imgext = args.jpeg
             if imgext == ".webp":
-                PIL.Image.open(bg["img"]).save(os.path.join(tempdir,os.path.splitext(bg["img"])[0]+".png"))
-                map["img"] = os.path.splitext(bg["img"])[0]+".png"
+                PIL.Image.open(bg["img"]).save(os.path.join(tempdir,os.path.splitext(bg["img"])[0]+args.jpeg))
+                os.remove(bg["img"])
+                map["img"] = os.path.splitext(bg["img"])[0]+args.jpeg
             else:
                 map["img"] = bg["img"]
             map["shiftX"] = bg["x"]-map["offsetX"]
@@ -153,7 +161,7 @@ def convert(args=args,worker=None):
             map["img"] = urllib.parse.unquote(map["img"])
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
             if imgext == ".webp":
-                ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+".png"
+                ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+args.jpeg
             else:
                 ET.SubElement(mapentry,'image').text = map["img"]
             with PIL.Image.open(map["img"]) as img:
@@ -164,14 +172,16 @@ def convert(args=args,worker=None):
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
                     if imgext == ".webp":
                         if args.gui:
-                            worker.outputLog(" - Converting map from webp to png")
-                        img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+".png"))
+                            worker.outputLog(" - Converting map from .webp to " + args.jpeg)
+                        img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+args.jpeg))
+                        os.remove(map["img"])
                     else:
                         img.save(os.path.join(tempdir,map["img"]))
                 elif imgext == ".webp":
                         if args.gui:
-                            worker.outputLog(" - Converting map from webp to png")
-                        img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+".png"))
+                            worker.outputLog(" - Converting map from .webp to " + args.jpeg)
+                        img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+args.jpeg))
+                        os.remove(map["img"])
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
                 else:
@@ -195,8 +205,9 @@ def convert(args=args,worker=None):
             if 'thumb' in map and map["thumb"]:
                 imgext = os.path.splitext(os.path.basename(map["img"]))[1]
                 if imgext == ".webp":
-                    ET.SubElement(mapentry,'snapshot').text = os.path.splitext(map["thumb"])[0]+".png"
-                    PIL.Image.open(map["thumb"]).save(os.path.join(tempdir,os.path.splitext(map["thumb"])[0]+".png"))
+                    ET.SubElement(mapentry,'snapshot').text = os.path.splitext(map["thumb"])[0]+args.jpeg
+                    PIL.Image.open(map["thumb"]).save(os.path.join(tempdir,os.path.splitext(map["thumb"])[0]+args.jpeg))
+                    os.remove(map["thumb"])
                 else:
                     ET.SubElement(mapentry,'snapshot').text = map["thumb"]
 
@@ -323,6 +334,7 @@ def convert(args=args,worker=None):
                     if args.gui:
                         worker.outputLog(" - Converting tile from webp to png")
                     img.save(os.path.join(tempdir,os.path.splitext(image["img"])[0]+".png"))
+                    os.remove(image["img"])
                 else:
                     ET.SubElement(asset,'resource').text = image["img"]
                     if img.width > 4096 or img.height > 4096:
@@ -689,7 +701,18 @@ def convert(args=args,worker=None):
             if '$$deleted' in map and map['$$deleted']:
                 continue
             if not modimage.text and map["name"].lower() in ["intro","start","start here","title page","title","landing","landing page"]:
-                modimage.text = urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
+                if args.gui:
+                    worker.outputLog("Generating cover image")
+                print("\rGenerating cover image",file=sys.stderr,end='')
+                with PIL.Image.open(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])) as img:
+                    if img.width >= img.width:
+                        img.crop((0,0,img.width,img.width))
+                    else:
+                        img.crop((0,0,img.height,img.height))
+                    if img.width > 1024:
+                        img.resize((1024,1024))
+                    img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
+                modimage.text = "module_cover" + args.jpeg
             if not map["img"] and len(map["tiles"]) == 0:
                 continue
             mapcount += 1
@@ -712,8 +735,8 @@ def convert(args=args,worker=None):
                 img.crop((0,0,img.height,img.height))
             if img.width > 1024:
                 img.resize((1024,1024))
-            img.save(os.path.join(tempdir,"module_cover.png"))
-        modimage.text = "module_cover.png"
+            img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
+        modimage.text = "module_cover" + args.jpeg
     # write to file
     sys.stderr.write("\033[K")
     if args.gui:
@@ -906,8 +929,9 @@ def convert(args=args,worker=None):
             if a['img']: a['img'] = urllib.parse.unquote(a['img'])
             if a['img'] and os.path.exists(a['img']):
                 if os.path.splitext(a["img"])[1] == ".webp":
-                    PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"))
-                    ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+".png"
+                    PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+args.jpeg))
+                    os.remove(a["img"])
+                    ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+args.jpeg
                 else:
                     ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.basename(a['img'])
                     shutil.copy(a['img'],os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.basename(a['img'])))
@@ -915,6 +939,7 @@ def convert(args=args,worker=None):
             if a['token']['img'] and os.path.exists(a['token']['img']):
                 if os.path.splitext(a['token']["img"])[1] == ".webp":
                     PIL.Image.open(a['token']["img"]).save(os.path.join(tempdir,"monsters","token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"))
+                    os.remove(a['token']["img"])
                     ET.SubElement(monster,'image').text = "token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"
                 else:
                     ET.SubElement(monster,'token').text = "token_"+slugify(a['name'])+"_"+os.path.basename(a['token']['img'])
