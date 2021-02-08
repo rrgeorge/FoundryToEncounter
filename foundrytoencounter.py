@@ -614,7 +614,10 @@ def convert(args=args,worker=None):
             content.text += '<tr>'
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
-            content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
+            if os.path.exists(s['path']):
+                content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
+            else:
+                content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
             content.text += '</figure></td>'
             content.text += '</tr>'
         content.text += "</tbody></table>"
@@ -664,7 +667,7 @@ def convert(args=args,worker=None):
             if not linkMade:
                 content.text += '{}'.format(r['text'] if r['text'] else '&nbsp;')
             content.text += '</td>'
-            if os.path.exists(r['img']):
+            if 'img' in r and os.path.exists(r['img']):
                 content.text += '<td style="width:50px;height:50px;"><img src="{}"></td>'.format(r['img'])
             else:
                 content.text += '<td style="width:50px;height:50px;">&nbsp;</td>'
@@ -998,7 +1001,11 @@ if args.gui:
         def outputLog(self,msg):
             self.message.emit(msg)
         def run(self):
-            convert(args,self)
+            try:
+                convert(args,self)
+            except Exception:
+                import traceback
+                self.message.emit(traceback.format_exc())
 
     class GUI(QDialog):
         def setupUi(self, Dialog):
