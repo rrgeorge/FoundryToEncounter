@@ -361,8 +361,8 @@ def convert(args=args,worker=None):
                 ET.SubElement(asset,'name').text = "Light {}".format(i+1)
 
                 lightel = ET.SubElement(tile,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
-                ET.SubElement(lightel,'radiusMax').text = str(light["dim"]*map["gridDistance"])
-                ET.SubElement(lightel,'radiusMin').text = str(light["bright"]*map["gridDistance"])
+                ET.SubElement(lightel,'radiusMax').text = str(light["dim"])
+                ET.SubElement(lightel,'radiusMin').text = str(light["bright"])
                 ET.SubElement(lightel,'color').text = light["tintColor"] if "tintColor" in light and light["tintColor"] else "#ffffff"
                 ET.SubElement(lightel,'opacity').text = str(light["tintAlpha"])
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
