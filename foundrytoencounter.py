@@ -15,6 +15,8 @@ import urllib.request
 import math
 import PIL.Image
 import PIL.ImageOps
+import PIL.ImageDraw
+import PIL.ImageFont
 import random
 import html
 import magic
@@ -322,6 +324,11 @@ def convert(args=args,worker=None):
                 ET.SubElement(asset,'name').text = os.path.splitext(os.path.basename(image["img"]))[0]
                 ET.SubElement(asset,'type').text = "image"
                 imgext = os.path.splitext(os.path.basename(image["img"]))[1]
+                if imgext == ".webm":
+                    if args.gui:
+                        worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image["img"])
+                    print(" - webm tiles are not supported, consider converting to a spritesheet:",image["img"],file=sys.stderr,end='')
+                    continue
                 if image["img"].startswith("http"):
                     urllib.request.urlretrieve(image["img"],os.path.basename(image["img"]))
                     image["img"] = os.path.basename(image["img"])
@@ -377,7 +384,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
 
         if 'tokens' in map and len(map['tokens']) > 0:
-            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': map['_id']})
+            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': map['_id'], 'sort': '1'})
             ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
             ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map['tokens']:
@@ -394,6 +401,89 @@ def convert(args=args,worker=None):
                         break
                 if not actorLinked:
                     ET.SubElement(combatant,'monster', { 'ref': "/monster/{}".format(slugify(token['name'])) })
+
+        if 'drawings' in map and len(map['drawings']) > 0:
+            for d in map['drawings']:
+                if d['type'] == 't':
+                    #marker = ET.SubElement(mapentry,'marker')
+                    #ET.SubElement(marker,'name').text = d['text']
+                    #ET.SubElement(marker,'x').text = str(round((d['x']-map["offsetX"])*map["rescale"]))
+                    #ET.SubElement(marker,'y').text = str(round((d['y']-map["offsetY"])*map["rescale"]))
+                    #ET.SubElement(marker,'hidden').text = 'YES'
+                    #ET.SubElement(marker,'color').text = d['textColor']
+                    #ET.SubElement(marker,'shape').text = 'label'
+                    with PIL.Image.new('RGBA', (round(d["width"]), round(d["height"])), color = (0,0,0,0)) as img:
+                        try:
+                            font = PIL.ImageFont.truetype(os.path.join(moduletmp,mod["name"],"fonts",d['fontFamily'] + ".ttf"), size=d['fontSize'])
+                        except Exception:
+                            try:
+                                font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
+                            except Exception:
+                                font = PIL.ImageFont.load_default()
+                        text = d['text']
+                        draw = PIL.ImageDraw.Draw(img)
+                        if draw.multiline_textsize(text,font=font)[0] > round(d["width"]):
+                            words = text.split(' ')
+                            text = ''
+                            for i in range(len(words)):
+                                if draw.multiline_textsize(text + ' ' + words[i],font=font)[0] <= round(d["width"]):
+                                    text += ' ' + words[i]
+                                else:
+                                    text += '\n' + words[i]
+                        draw.multiline_text((0,0),text,(255,255,255),spacing=0,font=font)
+                        img.save(os.path.join(tempdir,"text_" + d['_id'] + ".png"))
+                    tile = ET.SubElement(mapentry,'tile')
+                    ET.SubElement(tile,'x').text = str(round((d["x"]-map["offsetX"]+(d["width"]/2))*map["rescale"]))
+                    ET.SubElement(tile,'y').text = str(round((d["y"]-map["offsetY"]+(d["height"]/2))*map["rescale"]))
+                    ET.SubElement(tile,'zIndex').text = str(d["z"])
+                    ET.SubElement(tile,'width').text = str(round(d["width"]*map["rescale"]))
+                    ET.SubElement(tile,'height').text = str(round(d["height"]*map["rescale"]))
+                    ET.SubElement(tile,'opacity').text = "1.0"
+                    ET.SubElement(tile,'rotation').text = str(d["rotation"])
+                    ET.SubElement(tile,'locked').text = "YES" if d["locked"] else "NO"
+                    ET.SubElement(tile,'layer').text = "object"
+                    ET.SubElement(tile,'hidden').text = "YES" if d["hidden"] else "NO"
+                    asset = ET.SubElement(tile,'asset')
+                    ET.SubElement(asset,'name').text = d['text']
+                    ET.SubElement(asset,'type').text = "image"
+                    ET.SubElement(asset,'resource').text = "text_" + d['_id'] + ".png"
+
+                elif d['type'] == 'p':
+                    drawing = ET.SubElement(mapentry,'drawing',{'id': d['_id']})
+                    ET.SubElement(drawing,'layer').text = 'dm' if d['hidden'] else 'map'
+                    ET.SubElement(drawing,'strokeWidth').text = str(d['strokeWidth'])
+                    ET.SubElement(drawing,'strokeColor').text = d['strokeColor']
+                    ET.SubElement(drawing,'opacity').text = str(d['strokeAlpha'])
+                    ET.SubElement(drawing,'fillColor').text = d['fillColor']
+
+                    points = []
+                    for p in d['points']:
+                        points.append(str(p[0]*map["rescale"]))
+                        points.append(str(p[1]*map["rescale"]))
+                    ET.SubElement(drawing,'data').text = ",".join(points)
+
+        if 'sounds' in map and len(map['sounds']) > 0:
+            for s in map['sounds']:
+                marker = ET.SubElement(mapentry,'marker')
+                ET.SubElement(marker,'name').text = ""#"Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
+                ET.SubElement(marker,'label').text = "🔊"
+                ET.SubElement(marker,'type').text = "circle"
+                ET.SubElement(marker,'x').text = str(round((s['x']-map["offsetX"])*map["rescale"]))
+                ET.SubElement(marker,'y').text = str(round((s['y']-map["offsetY"])*map["rescale"]))
+                ET.SubElement(marker,'hidden').text = 'YES'
+                ET.SubElement(marker,'content', { 'ref': "/page/{}_{}".format(map['_id'],s['_id']) })
+                page = ET.SubElement(module,'page', { 'id': "{}_{}".format(map['_id'],s['_id']), 'parent': map['_id'] } )
+                ET.SubElement(page,'name').text = map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
+                ET.SubElement(page,'slug').text = slugify(map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0])
+                content = ET.SubElement(page,'content')
+                content.text = "<h1>Sound: {}</h1>".format(s['name'] if 'name' in s else os.path.splitext(os.path.basename(s['path']))[0])
+                content.text += '<figure id={}>'.format(s['_id'])
+                content.text += '<figcaption>{}</figcaption>'.format(s['name'] if 'name' in s else os.path.splitext(os.path.basename(s['path']))[0])
+                if os.path.exists(s['path']):
+                    content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
+                else:
+                    content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
+                content.text += '</figure>'
 
         return mapslug
     tempdir = tempfile.mkdtemp(prefix="convertfoundry_")
