@@ -325,6 +325,15 @@ def convert(args=args,worker=None):
                 if image["img"].startswith("http"):
                     urllib.request.urlretrieve(image["img"],os.path.basename(image["img"]))
                     image["img"] = os.path.basename(image["img"])
+                if not os.path.exists(image["img"]):
+                    if os.path.exists(os.path.splitext(image["img"])[0]+".png"):
+                        image["img"] = os.path.splitext(image["img"])[0]+".png"
+                        imgext = ".png"
+                    else:
+                        if args.gui:
+                            worker.outputLog(" - MISSING RESOURCE: "+image["img"])
+                        print(" - MISSING RESOURCE:",image["img"],file=sys.stderr,end='')
+                        continue
                 img = PIL.Image.open(image["img"])
                 if imgext == ".webp":
                     ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+".png"
@@ -553,6 +562,8 @@ def convert(args=args,worker=None):
         order += 1
         if args.gui:
             worker.updateProgress(5+(order/len(journal))*10)
+        if '$$deleted' in j and j['$$deleted']:
+            continue
         print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(j['_id']), 'sort': str(j['sort'] or order) } )
         if 'folder' in j and j['folder'] != None:
@@ -612,6 +623,8 @@ def convert(args=args,worker=None):
         order += 1
         if args.gui:
             worker.updateProgress(15+(order/len(playlists))*10)
+        if '$$deleted' in p and p['$$deleted']:
+            continue
         print("\rConverting playlists [{}/{}] {:.0f}%".format(order,len(playlists),order/len(playlists)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(p['_id']), 'parent': playlistsgroup, 'sort': str(p['sort'] if 'sort' in p and p['sort'] else order) } )
         ET.SubElement(page,'name').text = p['name']
@@ -647,6 +660,8 @@ def convert(args=args,worker=None):
         order += 1
         if args.gui:
             worker.updateProgress(25+(order/len(tables))*10)
+        if '$$deleted' in t and t['$$deleted']:
+            continue
         print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
         ET.SubElement(page,'name').text = t['name']
@@ -704,6 +719,9 @@ def convert(args=args,worker=None):
                 if args.gui:
                     worker.outputLog("Generating cover image")
                 print("\rGenerating cover image",file=sys.stderr,end='')
+                if not os.path.exists(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])):
+                    if os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+args.jpeg):
+                        map["img"] = os.path.splitext(map["img"])[0]+args.jpeg
                 with PIL.Image.open(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])) as img:
                     if img.width >= img.width:
                         img.crop((0,0,img.width,img.width))
@@ -711,6 +729,7 @@ def convert(args=args,worker=None):
                         img.crop((0,0,img.height,img.height))
                     if img.width > 1024:
                         img.resize((1024,1024))
+                    if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"): img = img.convert("RGB")
                     img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
                 modimage.text = "module_cover" + args.jpeg
             if not map["img"] and len(map["tiles"]) == 0:
@@ -728,6 +747,9 @@ def convert(args=args,worker=None):
         if args.gui:
             worker.outputLog("Generating cover image")
         print("\rGenerating cover image",file=sys.stderr,end='')
+        if not os.path.exists(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])):
+            if os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+args.jpeg):
+                map["img"] = os.path.splitext(map["img"])[0]+args.jpeg
         with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
             if img.width >= img.width:
                 img.crop((0,0,img.width,img.width))
@@ -735,6 +757,7 @@ def convert(args=args,worker=None):
                 img.crop((0,0,img.height,img.height))
             if img.width > 1024:
                 img.resize((1024,1024))
+            if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"): img = img.convert("RGB")
             img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
         modimage.text = "module_cover" + args.jpeg
     # write to file
@@ -900,10 +923,11 @@ def convert(args=args,worker=None):
                 ET.SubElement(monster,'hp').text = "{} ({})".format(d['attributes']['hp']['value'],d['attributes']['hp']['formula'])
             else:
                 ET.SubElement(monster,'hp').text = "{}".format(d['attributes']['hp']['value'])
-            if d['attributes']['speed']['special']:
-                ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']+", "+d['attributes']['speed']['special']
-            else:
-                ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']
+            if 'speed' in d['attributes']:
+                if d['attributes']['speed']['special']:
+                    ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']+", "+d['attributes']['speed']['special']
+                else:
+                    ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']
             ET.SubElement(monster,'str').text = str(d['abilities']['str']['value'])
             ET.SubElement(monster,'dex').text = str(d['abilities']['dex']['value'])
             ET.SubElement(monster,'con').text = str(d['abilities']['con']['value'])
