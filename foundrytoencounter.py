@@ -840,6 +840,16 @@ def convert(args=args,worker=None):
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
             if os.path.exists(s['path']):
+                if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
+                    try:
+                        infile = ffmpeg.input(s["path"])
+                        audio = infile.audio
+                        out = ffmpeg.output(audio,os.path.splitext(s["path"])[0]+".mp4",acodec='aac')
+                        out.run(cmd=ffmpeg_path,quiet=True)
+                        os.remove(s["path"])
+                        s["path"] = os.path.splitext(s["path"])[0]+".mp4"
+                    except Exception:
+                        print ("Could not convert to MP4")
                 content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
             else:
                 content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
