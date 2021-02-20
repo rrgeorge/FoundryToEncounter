@@ -194,8 +194,10 @@ def convert(args=args,worker=None):
                     ET.SubElement(mapentry,'video').text = os.path.splitext(map["img"])[0]+".mp4"
                 except Exception:
                     import traceback
-                    self.message.emit(traceback.format_exc())
-                    print(traceback.format_exc())
+                    if args.gui:
+                        worker.outputLog(traceback.format_exc())
+                    else:
+                        print(traceback.format_exc())
             if imgext == ".webp":
                 ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+args.jpeg
             else:
