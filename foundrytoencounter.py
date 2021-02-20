@@ -21,6 +21,14 @@ import random
 import html
 import magic
 
+try:
+    import ffmpeg
+    ffmpeg_path = shutil.which("ffmpeg")
+    ffprobe_path = shutil.which("ffprobe")
+except Exception:
+    ffmpeg_path = None
+    ffprobe_path = None
+
 # Argument Parser
 parser = argparse.ArgumentParser(
     description="Converts Foundry Modules/Worlds to EncounterPlus Modules")
@@ -151,7 +159,6 @@ def convert(args=args,worker=None):
         mapentry = ET.SubElement(module,'map',{'id': map['_id'],'parent': mapgroup,'sort': str(int(map["sort"]))})
         ET.SubElement(mapentry,'name').text = map['name']
         ET.SubElement(mapentry,'slug').text = mapslug
-        ET.SubElement(mapentry,'gridSize').text = str(round(map["grid"]))#*(5.0/map["gridDistance"])))
         ET.SubElement(mapentry,'gridScale').text = str(round(map["gridDistance"]))#*((5.0/map["gridDistance"]))))
         ET.SubElement(mapentry,'gridUnits').text = str(map["gridUnits"])
         ET.SubElement(mapentry,'gridVisible').text = "YES" if map['gridAlpha'] > 0 else "NO"
@@ -159,9 +166,36 @@ def convert(args=args,worker=None):
         ET.SubElement(mapentry,'gridOffsetX').text = str(round(map['shiftX']))
         ET.SubElement(mapentry,'gridOffsetY').text = str(round(map['shiftY']))
 
-        if map["img"]:
+        if map["img"] and os.path.exists(urllib.parse.unquote(map["img"])):
             map["img"] = urllib.parse.unquote(map["img"])
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
+            if imgext == ".webm":
+                try:
+                    infile = ffmpeg.input(map["img"])
+                    video = infile.video.filter('pad',width='ceil(iw/2)*2',height='ceil(ih/2)*2')
+                    audio = infile.audio
+                    out = ffmpeg.output(
+                            video,audio,
+                            os.path.splitext(map["img"])[0]+".mp4",
+                            vcodec='hevc',acodec='aac',
+                            vtag='hvc1',
+                            )
+                    out.run(cmd=ffmpeg_path,quiet=True)
+                    (
+                           ffmpeg
+                            .input(map["img"])
+                            .filter('pad',width='ceil(iw/2)*2',height='ceil(ih/2)*2')
+                            .trim(start_frame=0,end_frame=1)
+                            .output(os.path.splitext(map["img"])[0]+".jpg")
+                            .run(cmd=ffmpeg_path,quiet=True)
+                    )
+                    os.remove(map["img"])
+                    map["img"] = os.path.splitext(map["img"])[0]+".jpg"
+                    ET.SubElement(mapentry,'video').text = os.path.splitext(map["img"])[0]+".mp4"
+                except Exception:
+                    import traceback
+                    self.message.emit(traceback.format_exc())
+                    print(traceback.format_exc())
             if imgext == ".webp":
                 ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+args.jpeg
             else:
@@ -186,6 +220,9 @@ def convert(args=args,worker=None):
                         os.remove(map["img"])
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
+                    if map["scale"] > 1:
+                        map["scale"] = 1.0
+                        map["rescale"] = img.width/map["width"] if img.width/map["width"] >= img.height/map["height"] else img.height/map["height"]
                 else:
                     map["scale"] = 1.0
         else:
@@ -200,11 +237,14 @@ def convert(args=args,worker=None):
                 img.save(os.path.join(tempdir,mapslug+"_bg.png"))
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
+                    if map["scale"] > 1:
+                        map["scale"] = 1.0
+                        map["rescale"] = img.width/map["width"] if img.width/map["width"] >= img.height/map["height"] else img.height/map["height"]
                 else:
                     map["scale"] = 1.0
 
                 ET.SubElement(mapentry,'image').text = mapslug+"_bg.png"
-            if 'thumb' in map and map["thumb"]:
+            if 'thumb' in map and map["thumb"] and os.path.exists(map["thumb"]):
                 imgext = os.path.splitext(os.path.basename(map["img"]))[1]
                 if imgext == ".webp":
                     ET.SubElement(mapentry,'snapshot').text = os.path.splitext(map["thumb"])[0]+args.jpeg
@@ -213,6 +253,7 @@ def convert(args=args,worker=None):
                 else:
                     ET.SubElement(mapentry,'snapshot').text = map["thumb"]
 
+        ET.SubElement(mapentry,'gridSize').text = str(round(map["grid"]*map["rescale"]))#*(5.0/map["gridDistance"])))
         ET.SubElement(mapentry,'scale').text = str(map["scale"])
         if "walls" in map and len(map["walls"])>0:
             ET.SubElement(mapentry,'lineOfSight').text = "YES"
@@ -322,13 +363,68 @@ def convert(args=args,worker=None):
 
                 asset = ET.SubElement(tile,'asset')
                 ET.SubElement(asset,'name').text = os.path.splitext(os.path.basename(image["img"]))[0]
-                ET.SubElement(asset,'type').text = "image"
                 imgext = os.path.splitext(os.path.basename(image["img"]))[1]
                 if imgext == ".webm":
-                    if args.gui:
-                        worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image["img"])
-                    print(" - webm tiles are not supported, consider converting to a spritesheet:",image["img"],file=sys.stderr,end='')
+                    try:
+                        if os.path.exists(image["img"]):
+                            (
+                                ffmpeg
+                                 .input(image["img"],vcodec='libvpx-vp9')
+                                 .output(os.path.splitext(image["img"])[0]+"-frame%05d.png")
+                                 .run(cmd=ffmpeg_path,quiet=True)
+                            )
+                            probe = ffmpeg.probe(image["img"],cmd=ffprobe_path)
+                            duration = probe['format']['duration']
+                            video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+                            framewidth = int(video_stream['width'])
+                            frameheight = int(video_stream['height'])
+                            frames = []
+                            for afile in os.listdir(os.path.dirname(image["img"])):
+                                if re.match(re.escape(os.path.splitext(os.path.basename(image["img"]))[0])+"-frame[0-9]{5}\.png",afile):
+                                    frames.append(os.path.join(os.path.dirname(image["img"]),afile))
+                            def getGrid(n):
+                                i = 1
+                                factors = []
+                                while(i < n+1):
+                                    if n % i == 0:
+                                        factors.append(i)
+                                    i += 1
+                                return (factors[len(factors)//2],factors[(len(factors)//2)-1])
+                            (gw,gh) = getGrid(len(frames))
+                            with PIL.Image.new('RGBA', (round(framewidth*gw), round(frameheight*gh)), color = (0,0,0,0)) as img:
+                                px = 0
+                                py = 0
+                                for i in range(len(frames)):
+                                    img.paste(PIL.Image.open(frames[i]),(framewidth*px,frameheight*py))
+                                    os.remove(frames[i])
+                                    px += 1
+                                    if px == gw:
+                                        px = 0
+                                        py += 1
+                                if img.width > 4096 or img.height > 4096:
+                                    scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                                    img = img.resize((round(img.width*scale),round(img.height*scale)))
+                                    framewidth = round(framewidth*scale)
+                                    frameheight = round(frameheight*scale)
+                                    print("RESCALLED SPRITESHEET BY ",scale)
+                                img.save(os.path.splitext(image["img"])[0]+"-sprite.png")
+                            os.remove(image["img"])
+                        if os.path.exists(os.path.splitext(image["img"])[0]+"-sprite.png"):
+                            ET.SubElement(asset,'type').text = "spriteSheet"
+                            ET.SubElement(asset,'frameWidth').text = str(framewidth)
+                            ET.SubElement(asset,'frameHeight').text = str(frameheight)
+                            ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+"-sprite.png"
+                            ET.SubElement(asset,'duration').text = str(duration)
+                        continue
+                    except Exception:
+                        import traceback
+                        print(traceback.format_exc())
+                        if args.gui:
+                            worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image["img"])
+                        print(" - webm tiles are not supported, consider converting to a spritesheet:",image["img"],file=sys.stderr,end='')
                     continue
+                else:
+                    ET.SubElement(asset,'type').text = "image"
                 if image["img"].startswith("http"):
                     urllib.request.urlretrieve(image["img"],os.path.basename(image["img"]))
                     image["img"] = os.path.basename(image["img"])
@@ -419,7 +515,11 @@ def convert(args=args,worker=None):
                             try:
                                 font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
                             except Exception:
-                                font = PIL.ImageFont.load_default()
+                                try:
+                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/{}.ttf".format(d['fontFamily'].lower(),d['fontFamily']),d['fontFamily'] + ".ttf")
+                                    font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
+                                except Exception:
+                                    font = PIL.ImageFont.load_default()
                         text = d['text']
                         draw = PIL.ImageDraw.Draw(img)
                         if draw.multiline_textsize(text,font=font)[0] > round(d["width"]):
@@ -480,6 +580,16 @@ def convert(args=args,worker=None):
                 content.text += '<figure id={}>'.format(s['_id'])
                 content.text += '<figcaption>{}</figcaption>'.format(s['name'] if 'name' in s else os.path.splitext(os.path.basename(s['path']))[0])
                 if os.path.exists(s['path']):
+                    if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
+                        try:
+                            infile = ffmpeg.input(s["path"])
+                            audio = infile.audio
+                            out = ffmpeg.output(audio,os.path.splitext(s["path"])[0]+".mp4",acodec='aac')
+                            out.run(cmd=ffmpeg_path,quiet=True)
+                            os.remove(s["path"])
+                            s["path"] = os.path.splitext(s["path"])[0]+".mp4"
+                        except Exception:
+                            print ("Could not convert to MP4")
                     content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
                 else:
                     content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
