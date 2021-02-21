@@ -44,6 +44,7 @@ if sys.platform == "win32":
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
+tempdir = None
 
 def ffprobe(video: str) -> dict:
     process = subprocess.Popen([ffprobe_path,'-v','error','-show_entries','format=duration','-select_streams','v:0','-show_entries','stream=codec_name,height,width','-of','default=noprint_wrappers=1',video],startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
@@ -636,8 +637,22 @@ def convert(args=args,worker=None):
                 content.text += '</figure>'
 
         return mapslug
-    tempdir = tempfile.mkdtemp(prefix="convertfoundry_")
+    global tempdir
+    if not tempdir:
+        tempdir = tempfile.mkdtemp(prefix="convertfoundry_")
     nsuuid = uuid.UUID("ee9acc6e-b94a-472a-b44d-84dc9ca11b87")
+    if args.srcfile.startswith("http"):
+        urllib.request.urlretrieve(args.srcfile,os.path.join(tempdir,"manifest.json"))
+        with open(os.path.join(tempdir,"manifest.json")) as f:
+            manifest = json.load(f)
+        if 'download' in manifest:
+            def progress(block_num, block_size, total_size):
+                pct = 100.00*((block_num * block_size)/total_size)
+                print("\rDownloading module {:.2f}%".format(pct),file=sys.stderr,end='')
+            urllib.request.urlretrieve(manifest['download'],os.path.join(tempdir,"module.zip"),progress)
+            print("\r".format(pct),file=sys.stderr,end='')
+            args.srcfile = os.path.join(tempdir,"module.zip")
+
     with zipfile.ZipFile(args.srcfile) as z:
         journal = []
         maps = []
@@ -737,6 +752,9 @@ def convert(args=args,worker=None):
             moduletmp = os.path.join(tempdir,"modules")
         os.mkdir(moduletmp)
         z.extractall(path=moduletmp)
+    if os.path.exists(os.path.join(tempdir,"module.zip")):
+        os.remove(os.path.join(tempdir,"module.zip"))
+        os.remove(os.path.join(tempdir,"manifest.json"))
     moduuid = uuid.uuid5(nsuuid,mod["name"])
     slugs = []
     module = ET.Element(
@@ -1268,6 +1286,7 @@ def convert(args=args,worker=None):
     sys.stderr.write("\033[K")
     print("\rDeleteing temporary files",file=sys.stderr,end='')
     shutil.rmtree(tempdir)
+    tempdir = None
     sys.stderr.write("\033[K")
     print("\rFinished creating module: {}".format(zipfilename),file=sys.stderr)
     if args.gui:
@@ -1303,6 +1322,42 @@ if args.gui:
             except Exception:
                 import traceback
                 self.message.emit(traceback.format_exc())
+                if tempdir:
+                    shutil.rmtree(tempdir)
+                    tempdir = None
+
+    class ManifestWorker(QThread):
+        def __init__(self,parent = None):
+            QThread.__init__(self,parent)
+            #self.exiting = False
+            manifesturl = None
+        progress = pyqtSignal(int)
+        message = pyqtSignal(str)
+        #def __del__(self):
+        #    self.exiting = True
+        #    self.wait()
+        def download(self,manifesturl):
+            self.manifesturl = manifesturl
+            self.start()
+        def updateProgress(self,pct):
+            self.progress.emit(math.floor(pct))
+        def sendMessage(self,msg):
+            self.message.emit(msg)
+        def run(self):
+            try:
+                global tempdir
+                tempdir = tempfile.mkdtemp(prefix="convertfoundry_")
+                urllib.request.urlretrieve(self.manifesturl,os.path.join(tempdir,"manifest.json"))
+                with open(os.path.join(tempdir,"manifest.json")) as f:
+                    manifest = json.load(f)
+                self.sendMessage("Downloading: {}".format(manifest["title"]))
+                def progress(block_num, block_size, total_size):
+                    pct = 100.00*((block_num * block_size)/total_size)
+                    self.updateProgress(pct)
+                urllib.request.urlretrieve(manifest['download'],os.path.join(tempdir,"module.zip"),progress)
+                self.sendMessage("DONE")
+            except Exception as e:
+                self.sendMessage("An error occurred downloading the manifest:" + str(e))
 
     class GUI(QDialog):
         def setupUi(self, Dialog):
@@ -1361,8 +1416,14 @@ if args.gui:
             openAct.setStatusTip('Open Foundry ZIP File')
             openAct.triggered.connect(self.openFile)
 
+            openManifestAct = QAction('Open Manifest &Url…', self)
+            openManifestAct.setShortcut('Ctrl+U')
+            openManifestAct.setStatusTip('Download File from Manifest at URL')
+            openManifestAct.triggered.connect(self.openManifest)
+
             fileMenu = menubar.addMenu('&File')
             fileMenu.addAction(openAct)
+            fileMenu.addAction(openManifestAct)
             fileMenu.addAction(exitAct)
 
             aboutAct = QAction('&About', self)
@@ -1387,11 +1448,14 @@ if args.gui:
             self.foundryFile = None
             self.outputFile = ""
             self.worker = Worker()
+            self.manifestWorker = ManifestWorker()
             self.setupUi(self)
             self.browseButton.clicked.connect(self.openFile)
             self.convert.clicked.connect(self.saveFile)
             self.worker.message.connect(self.outputLog)
             self.worker.progress.connect(self.updateProgress)
+            self.manifestWorker.progress.connect(self.updateProgress)
+            self.manifestWorker.message.connect(self.manifestMessage)
             self.show()
             self.openFile()
 
@@ -1435,6 +1499,48 @@ if args.gui:
                 QMessageBox.warning(self,"Invalid","No foundry data was found in this zip file")
                 self.clearFiles()
                 self.openFile()
+
+        def openManifest(self):
+            manifesturl,okPressed = QInputDialog.getText(self,"Download from Manifest","Manifest URL:",QLineEdit.Normal,"")
+            if not okPressed:
+                self.clearFiles()
+                return
+            self.manifestWorker.download(manifesturl)
+
+        def manifestMessage(self,message):
+            if message.startswith("Downloading:"):
+                self.label.setText(message)
+                self.label.setVisible(True)
+                self.progress.setVisible(True)
+            elif message == "DONE":
+                self.progress.setVisible(False)
+                with zipfile.ZipFile(os.path.join(tempdir,"module.zip")) as z:
+                    isworld = False
+                    mod = None
+                    for filename in z.namelist():
+                        if os.path.basename(filename) == "world.json":
+                            with z.open(filename) as f:
+                                mod = json.load(f)
+                            isworld = True
+                        elif not mod and os.path.basename(filename) == "module.json":
+                            with z.open(filename) as f:
+                                mod = json.load(f)
+                if mod:
+                    if isworld:
+                        self.label.setText("Foundry World: {}".format(mod["title"]))
+                    else:
+                        self.label.setText("Foundry Module: {}".format(mod["title"]))
+                    self.label.setVisible(True)
+                    self.setFiles(os.path.join(tempdir,"module.zip"),mod["name"])
+                    self.convert.setEnabled(True)
+                else:
+                    QMessageBox.warning(self,"Invalid","No foundry data was found in this zip file")
+                    self.clearFiles()
+            else:
+                QMessageBox.warning(self,"Error",message)
+                self.clearFiles()
+
+
         def showAbout(self):
             QMessageBox.about(self,"About FoundryToEncounter","This utility converts a Foundry world or module to an EncounterPlus module.")
         def outputLog(self,text):
