@@ -20,14 +20,45 @@ import PIL.ImageFont
 import random
 import html
 import magic
+import subprocess
 
 try:
-    import ffmpeg
-    ffmpeg_path = shutil.which("ffmpeg")
-    ffprobe_path = shutil.which("ffprobe")
+    ffmpeg_path = shutil.which("ffmpeg") or shutil.which("ffmpeg",path=os.defpath)
+    ffprobe_path = shutil.which("ffprobe") or shutil.which("ffprobe",path=os.defpath)
+    if sys.platform == "darwin" and not ffmpeg_path and not ffprobe_path:
+        # Try homebrew paths
+        brewpath = "/usr/local/bin" + os.pathsep + "/opt/homebrew/bin"
+        ffmpeg_path = shutil.which("ffmpeg",path=brewpath)
+        ffprobe_path = shutil.which("ffprobe",path=brewpath)
+    if ffmpeg_path:
+        ffmpeg_path = os.path.abspath(ffmpeg_path)
+    if ffprobe_path:
+        ffprobe_path = os.path.abspath(ffprobe_path)
 except Exception:
     ffmpeg_path = None
     ffprobe_path = None
+
+"""For pyinstaller -w"""
+startupinfo = None
+if sys.platform == "win32":
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+
+def ffprobe(video: str) -> dict:
+    process = subprocess.Popen([ffprobe_path,'-v','error','-show_entries','format=duration','-select_streams','v:0','-show_entries','stream=codec_name,height,width','-of','default=noprint_wrappers=1',video],startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+    probe = {}
+    lines = process.stdout.readlines()
+    for entry in lines:
+        m = re.match(r'(.*)=(.*)',entry.decode())
+        if m:
+            if m.group(1) == "duration":
+                probe[m.group(1)]=float(m.group(2))
+            elif m.group(1) in ["height","width"]:
+                probe[m.group(1)]=int(m.group(2))
+            else:
+                probe[m.group(1)]=m.group(2)
+    return probe
 
 # Argument Parser
 parser = argparse.ArgumentParser(
@@ -171,24 +202,36 @@ def convert(args=args,worker=None):
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
             if imgext == ".webm":
                 try:
-                    infile = ffmpeg.input(map["img"])
-                    video = infile.video.filter('pad',width='ceil(iw/2)*2',height='ceil(ih/2)*2')
-                    audio = infile.audio
-                    out = ffmpeg.output(
-                            video,audio,
-                            os.path.splitext(map["img"])[0]+".mp4",
-                            vcodec='hevc',acodec='aac',
-                            vtag='hvc1',
-                            )
-                    out.run(cmd=ffmpeg_path,quiet=True)
-                    (
-                           ffmpeg
-                            .input(map["img"])
-                            .filter('pad',width='ceil(iw/2)*2',height='ceil(ih/2)*2')
-                            .trim(start_frame=0,end_frame=1)
-                            .output(os.path.splitext(map["img"])[0]+".jpg")
-                            .run(cmd=ffmpeg_path,quiet=True)
-                    )
+                    if args.gui:
+                        worker.outputLog("Converting video map")
+                    duration = ffprobe(map["img"])["duration"]
+                    ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                    with open('ffmpeg.log','a+') as f:
+                        logged = False
+                        while ffp.poll() is None:
+                            l = f.readline()
+                            m = re.match(r'(.*?)=(.*)',l)
+                            if m:
+                                key = m.group(1)
+                                val = m.group(2)
+                                if key == "out_time_us":
+                                    if not logged:
+                                        print(" webm->mp4:    ",file=sys.stderr,end='')
+                                        logged = True
+                                    elif pct >= 100:
+                                        print("\b",file=sys.stderr,end='')
+                                    pos = round(float(val)/10000,2)
+                                    pct = round(pos/duration)
+                                    print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
+                                    if args.gui:
+                                        worker.updateProgress(pct)
+                                    sys.stderr.flush()
+                    os.remove('ffmpeg.log')
+                    ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vframes','1',os.path.splitext(map["img"])[0]+".jpg"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                    print("\b"*16,file=sys.stderr,end='')
+                    print(" extracting still",file=sys.stderr,end='')
+                    sys.stderr.flush()
+                    ffp.wait()
                     os.remove(map["img"])
                     map["img"] = os.path.splitext(map["img"])[0]+".jpg"
                     ET.SubElement(mapentry,'video').text = os.path.splitext(map["img"])[0]+".mp4"
@@ -369,17 +412,17 @@ def convert(args=args,worker=None):
                 if imgext == ".webm":
                     try:
                         if os.path.exists(image["img"]):
-                            (
-                                ffmpeg
-                                 .input(image["img"],vcodec='libvpx-vp9')
-                                 .output(os.path.splitext(image["img"])[0]+"-frame%05d.png")
-                                 .run(cmd=ffmpeg_path,quiet=True)
-                            )
-                            probe = ffmpeg.probe(image["img"],cmd=ffprobe_path)
-                            duration = probe['format']['duration']
-                            video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-                            framewidth = int(video_stream['width'])
-                            frameheight = int(video_stream['height'])
+                            if args.gui:
+                                worker.outputLog(" - Converting webm tile to spritesheet")
+                            probe = ffprobe(image["img"])
+                            if probe['codec_name'] != 'vp9':
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',image["img"],os.path.splitext(image["img"])[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                            else:
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-i',image["img"],os.path.splitext(image["img"])[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                            ffp.wait()
+                            duration = probe['duration']
+                            framewidth = probe['width']
+                            frameheight = probe['height']
                             frames = []
                             for afile in os.listdir(os.path.dirname(image["img"])):
                                 if re.match(re.escape(os.path.splitext(os.path.basename(image["img"]))[0])+"-frame[0-9]{5}\.png",afile):
@@ -391,7 +434,12 @@ def convert(args=args,worker=None):
                                     if n % i == 0:
                                         factors.append(i)
                                     i += 1
-                                return (factors[len(factors)//2],factors[(len(factors)//2)-1])
+                                gw = factors[len(factors)//2]
+                                gh = factors[(len(factors)//2)-1]
+                                if gw*framewidth > 4096 or gh*frameheight > 4096:
+                                    return (gh,gw)
+                                else:
+                                    return (gw,gh)
                             (gw,gh) = getGrid(len(frames))
                             with PIL.Image.new('RGBA', (round(framewidth*gw), round(frameheight*gh)), color = (0,0,0,0)) as img:
                                 px = 0
@@ -408,7 +456,6 @@ def convert(args=args,worker=None):
                                     img = img.resize((round(img.width*scale),round(img.height*scale)))
                                     framewidth = round(framewidth*scale)
                                     frameheight = round(frameheight*scale)
-                                    print("RESCALLED SPRITESHEET BY ",scale)
                                 img.save(os.path.splitext(image["img"])[0]+"-sprite.png")
                             os.remove(image["img"])
                         if os.path.exists(os.path.splitext(image["img"])[0]+"-sprite.png"):
@@ -503,13 +550,6 @@ def convert(args=args,worker=None):
         if 'drawings' in map and len(map['drawings']) > 0:
             for d in map['drawings']:
                 if d['type'] == 't':
-                    #marker = ET.SubElement(mapentry,'marker')
-                    #ET.SubElement(marker,'name').text = d['text']
-                    #ET.SubElement(marker,'x').text = str(round((d['x']-map["offsetX"])*map["rescale"]))
-                    #ET.SubElement(marker,'y').text = str(round((d['y']-map["offsetY"])*map["rescale"]))
-                    #ET.SubElement(marker,'hidden').text = 'YES'
-                    #ET.SubElement(marker,'color').text = d['textColor']
-                    #ET.SubElement(marker,'shape').text = 'label'
                     with PIL.Image.new('RGBA', (round(d["width"]), round(d["height"])), color = (0,0,0,0)) as img:
                         try:
                             font = PIL.ImageFont.truetype(os.path.join(moduletmp,mod["name"],"fonts",d['fontFamily'] + ".ttf"), size=d['fontSize'])
@@ -584,10 +624,8 @@ def convert(args=args,worker=None):
                 if os.path.exists(s['path']):
                     if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
                         try:
-                            infile = ffmpeg.input(s["path"])
-                            audio = infile.audio
-                            out = ffmpeg.output(audio,os.path.splitext(s["path"])[0]+".mp4",acodec='aac')
-                            out.run(cmd=ffmpeg_path,quiet=True)
+                            ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',s["path"],'-acodec','aac',os.path.splitext(s["path"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                            ffp.wait()
                             os.remove(s["path"])
                             s["path"] = os.path.splitext(s["path"])[0]+".mp4"
                         except Exception:
@@ -844,11 +882,8 @@ def convert(args=args,worker=None):
             if os.path.exists(s['path']):
                 if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
                     try:
-                        infile = ffmpeg.input(s["path"])
-                        audio = infile.audio
-                        out = ffmpeg.output(audio,os.path.splitext(s["path"])[0]+".mp4",acodec='aac')
-                        out.run(cmd=ffmpeg_path,quiet=True)
-                        os.remove(s["path"])
+                        ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',s["path"],'-acodec','aac',os.path.splitext(s["path"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                        ffp.wait()
                         s["path"] = os.path.splitext(s["path"])[0]+".mp4"
                     except Exception:
                         print ("Could not convert to MP4")
@@ -1152,7 +1187,8 @@ def convert(args=args,worker=None):
             ET.SubElement(monster,'vulnerable').text = "; ".join(d['traits']['dv']['value'])+(" {}".format(d['traits']['dv']['special']) if 'special' in d['traits']['dv'] and d['traits']['dv']['special'] else "")
             ET.SubElement(monster,'resist').text = "; ".join(d['traits']['dr']['value'])+(" {}".format(d['traits']['dr']['special']) if 'special' in d['traits']['dr'] and d['traits']['dr']['special'] else "")
             ET.SubElement(monster,'conditionImmune').text = ", ".join(d['traits']['ci']['value'])+(" {}".format(d['traits']['ci']['special']) if 'special' in d['traits']['ci'] and d['traits']['ci']['special'] else "")
-            ET.SubElement(monster,'senses').text = d['traits']['senses']
+            if 'senses' in d['traits']:
+                ET.SubElement(monster,'senses').text = d['traits']['senses']
             ET.SubElement(monster,'passive').text = str(d['skills']['prc']['passive']) if 'passive' in d['skills']['prc'] else ""
             ET.SubElement(monster,'languages').text = ", ".join(d['traits']['languages']['value'])+(" {}".format(d['traits']['languages']['special']) if 'special' in d['traits']['languages'] and d['traits']['languages']['special'] else "")
             ET.SubElement(monster,'description').text = fixHTMLContent((d['details']['biography']['value'] + "\n" + d['details']['biography']['public']).rstrip())
