@@ -71,6 +71,12 @@ parser.add_argument(
     default=None,
     help="output into given output (default: [name].module)")
 parser.add_argument(
+    '-p',
+    dest="packdir",
+    action='store',
+    default=None,
+    help="create an asset pack using path provided instead of module")
+parser.add_argument(
     '-c',
     dest="compendium",
     action='store_const',
@@ -169,7 +175,7 @@ def convert(args=args,worker=None):
             imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
             if not imgext:
                 imgext = args.jpeg
-            if imgext == ".webp":
+            if imgext == ".webp" and args.jpeg != ".webp":
                 PIL.Image.open(bg["img"]).save(os.path.join(tempdir,os.path.splitext(bg["img"])[0]+args.jpeg))
                 os.remove(bg["img"])
                 map["img"] = os.path.splitext(bg["img"])[0]+args.jpeg
@@ -183,12 +189,12 @@ def convert(args=args,worker=None):
         if map["width"] > 8192 or map["height"] > 8192:
             map["rescale"] = 8192.0/map["width"] if map["width"] >= map["height"] else 8192.0/map["height"]
             map["grid"] = round(map["grid"]*map["rescale"])
-            map["width"] *= map["rescale"]
-            map["height"] *= map["rescale"]
+            map["width"] *= round(map["rescale"])
+            map["height"] *= round(map["rescale"])
             map['shiftX'] *= map["rescale"]
             map['shiftY'] *= map["rescale"]
 
-        mapentry = ET.SubElement(module,'map',{'id': map['_id'],'parent': mapgroup,'sort': str(int(map["sort"]))})
+        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
         ET.SubElement(mapentry,'name').text = map['name']
         ET.SubElement(mapentry,'slug').text = mapslug
         ET.SubElement(mapentry,'gridScale').text = str(round(map["gridDistance"]))#*((5.0/map["gridDistance"]))))
@@ -242,7 +248,7 @@ def convert(args=args,worker=None):
                         worker.outputLog(traceback.format_exc())
                     else:
                         print(traceback.format_exc())
-            if imgext == ".webp":
+            if imgext == ".webp" and args.jpeg != ".webp":
                 ET.SubElement(mapentry,'image').text = os.path.splitext(map["img"])[0]+args.jpeg
             else:
                 ET.SubElement(mapentry,'image').text = map["img"]
@@ -252,14 +258,14 @@ def convert(args=args,worker=None):
                     if args.gui:
                         worker.outputLog(" - Resizing map from {}x{} to {}x{}".format(img.width,img.height,round(img.width*scale),round(img.height*scale)))
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
-                    if imgext == ".webp":
+                    if imgext == ".webp" and args.jpeg != ".webp":
                         if args.gui:
                             worker.outputLog(" - Converting map from .webp to " + args.jpeg)
                         img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+args.jpeg))
                         os.remove(map["img"])
                     else:
                         img.save(os.path.join(tempdir,map["img"]))
-                elif imgext == ".webp":
+                elif imgext == ".webp" and args.jpeg != ".webp":
                         if args.gui:
                             worker.outputLog(" - Converting map from .webp to " + args.jpeg)
                         img.save(os.path.join(tempdir,os.path.splitext(map["img"])[0]+args.jpeg))
@@ -292,7 +298,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(mapentry,'image').text = mapslug+"_bg.png"
             if 'thumb' in map and map["thumb"] and os.path.exists(map["thumb"]):
                 imgext = os.path.splitext(os.path.basename(map["img"]))[1]
-                if imgext == ".webp":
+                if imgext == ".webp" and args.jpeg != ".webp":
                     ET.SubElement(mapentry,'snapshot').text = os.path.splitext(map["thumb"])[0]+args.jpeg
                     PIL.Image.open(map["thumb"]).save(os.path.join(tempdir,os.path.splitext(map["thumb"])[0]+args.jpeg))
                     os.remove(map["thumb"])
@@ -348,11 +354,11 @@ def convert(args=args,worker=None):
                             if p['dir'] == 2 and wSide.text != 'right':
                                 continue
                         isConnected = True
-                        pWall.set('id',pWallID+' '+p['_id'])
+                        #pWall.set('id',pWallID+' '+p['_id'])
                         lastpath.text += ','+','.join("{:.1f}".format(x) for x in pathlist)
                         break
                 if not isConnected:
-                    wall = ET.SubElement(mapentry,'wall',{'id': p['id'] if 'id' in p else p['_id'] })
+                    wall = ET.SubElement(mapentry,'wall',{'id': str(uuid.uuid5(moduuid,p['_id'])) })
                     lastpath = ET.SubElement(wall,'data')
                     lastpath.text = ','.join("{:.1f}".format(x) for x in pathlist)
                 if not isConnected:
@@ -488,7 +494,7 @@ def convert(args=args,worker=None):
                         print(" - MISSING RESOURCE:",image["img"],file=sys.stderr,end='')
                         continue
                 img = PIL.Image.open(image["img"])
-                if imgext == ".webp":
+                if imgext == ".webp" and args.jpeg != ".webp":
                     ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+".png"
                     if img.width > 4096 or img.height > 4096:
                         scale = 4095/img.width if img.width>=img.height else 4095/img.height
@@ -530,7 +536,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
 
         if 'tokens' in map and len(map['tokens']) > 0:
-            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': map['_id'], 'sort': '1'})
+            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': str(uuid.uuid5(moduuid,map['_id'])), 'sort': '1'})
             ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
             ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map['tokens']:
@@ -592,7 +598,7 @@ def convert(args=args,worker=None):
                     ET.SubElement(asset,'resource').text = "text_" + d['_id'] + ".png"
 
                 elif d['type'] == 'p':
-                    drawing = ET.SubElement(mapentry,'drawing',{'id': d['_id']})
+                    drawing = ET.SubElement(mapentry,'drawing',{'id': str(uuid.uuid5(moduuid,d['_id']))})
                     ET.SubElement(drawing,'layer').text = 'dm' if d['hidden'] else 'map'
                     ET.SubElement(drawing,'strokeWidth').text = str(d['strokeWidth'])
                     ET.SubElement(drawing,'strokeColor').text = d['strokeColor']
@@ -614,8 +620,8 @@ def convert(args=args,worker=None):
                 ET.SubElement(marker,'x').text = str(round((s['x']-map["offsetX"])*map["rescale"]))
                 ET.SubElement(marker,'y').text = str(round((s['y']-map["offsetY"])*map["rescale"]))
                 ET.SubElement(marker,'hidden').text = 'YES'
-                ET.SubElement(marker,'content', { 'ref': "/page/{}_{}".format(map['_id'],s['_id']) })
-                page = ET.SubElement(module,'page', { 'id': "{}_{}".format(map['_id'],s['_id']), 'parent': map['_id'] } )
+                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,s['_id']))) })
+                page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id'])) } )
                 ET.SubElement(page,'name').text = map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
                 ET.SubElement(page,'slug').text = slugify(map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0])
                 content = ET.SubElement(page,'content')
@@ -727,10 +733,12 @@ def convert(args=args,worker=None):
                         playlists.append(playlist)
                         l = f.readline().decode('utf8')
                     f.close()
-        if not isworld:
+        if not isworld and mod:
             for pack in mod['packs']:
                 pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
-                with z.open(mod['name']+'/'+pack['path']) as f:
+                if any(x.startswith("{}/".format(mod['name'])) for x in z.namelist()):
+                    pack['path'] = mod['name']+'/'+pack['path']
+                with z.open(pack['path']) as f:
                     l = f.readline().decode('utf8')
                     while l:
                         if pack['entity'] == 'JournalEntry':
@@ -744,6 +752,15 @@ def convert(args=args,worker=None):
                             actors.append(actor)
                         l = f.readline().decode('utf8')
                     f.close()
+        if not mod and args.packdir:
+            mod = { "title": os.path.splitext(os.path.basename(args.srcfile))[0].title(),
+                    "name": slugify(os.path.splitext(os.path.basename(args.srcfile))[0]),
+                    "version": 1,
+                    "description": ""
+                    }
+        elif not mod:
+            print("No foundry data was found in this zip file.")
+            return
         print(mod["title"])
         global moduuid
         if isworld:
@@ -751,14 +768,25 @@ def convert(args=args,worker=None):
         else:
             moduletmp = os.path.join(tempdir,"modules")
         os.mkdir(moduletmp)
-        z.extractall(path=moduletmp)
+        if not any(x.startswith("{}/".format(mod['name'])) for x in z.namelist()):
+            os.mkdir(os.path.join(moduletmp,mod['name']))
+            z.extractall(path=os.path.join(moduletmp,mod['name']))
+        else:
+            z.extractall(path=moduletmp)
     if os.path.exists(os.path.join(tempdir,"module.zip")):
         os.remove(os.path.join(tempdir,"module.zip"))
         os.remove(os.path.join(tempdir,"manifest.json"))
     moduuid = uuid.uuid5(nsuuid,mod["name"])
     slugs = []
-    module = ET.Element(
-        'module', { 'id': str(moduuid),'version': "{}".format(mod['version']) } )
+    if args.packdir:
+        if not args.packdir.startswith("{}/".format(mod['name'])):
+            args.packdir = os.path.join(mod['name'],args.packdir)
+        args.packdir = os.path.join(moduletmp,args.packdir)
+        module = ET.Element(
+            'pack', { 'id': str(moduuid),'version': "{}".format(mod['version']) } )
+    else:
+        module = ET.Element(
+            'module', { 'id': str(moduuid),'version': "{}".format(mod['version']) } )
     name = ET.SubElement(module, 'name')
     name.text = mod['title']
     author = ET.SubElement(module, 'author')
@@ -768,7 +796,10 @@ def convert(args=args,worker=None):
     if type(mod['author']) == list:
         author.text = ", ".join(mod['author'])
     category = ET.SubElement(module, 'category')
-    category.text = "adventure"
+    if args.packdir:
+        category.text = "personal"
+    else:
+        category.text = "adventure"
     code = ET.SubElement(module, 'code')
     code.text = mod['name']
     slug = ET.SubElement(module, 'slug')
@@ -781,6 +812,153 @@ def convert(args=args,worker=None):
     os.chdir(tempdir)
     maxorder = 0
     sort = 0
+    if args.packdir:
+        journal.clear()
+        maps.clear()
+        folders.clear()
+        actors.clear()
+        items.clear()
+        tables.clear()
+        playlists.clear()
+        packdir = os.path.join(tempdir,"packdir")
+        os.mkdir(packdir)
+        packroot = [folder for folder in os.listdir(args.packdir) if os.path.isdir(os.path.join(args.packdir,folder))]
+        packroot.append('.')
+        pos = 0.00
+        for root,dirs,files in os.walk(args.packdir):
+            if args.gui:
+                worker.updateProgress((pos/len(packroot))*70)
+            groupname = os.path.relpath(root, start=args.packdir)
+            if groupname != '.':
+                if args.gui:
+                    worker.outputLog("Creating group "+groupname.title())
+                sort += 1
+                groupid = str(uuid.uuid5(moduuid,slugify(os.path.relpath(root, start=args.packdir))))
+                group = ET.SubElement(module, 'group', {'id': groupid, 'sort': str(int(sort))})
+                ET.SubElement(group, 'name').text = groupname.title()
+                ET.SubElement(group, 'slug').text = slugify(groupname)
+            else:
+                groupid = None
+            for f in files:
+                pos += 1.00/len(files)
+                image = os.path.join(root,f)
+                if not re.match(r'(image/.*?|video/webm)',magic.from_file(image,mime=True)):
+                    print("\r - Skipping",f,file=sys.stderr,end='')
+                    sys.stderr.write("\033[K")
+                    sys.stderr.flush()
+                    continue
+                print("\r Adding",f,file=sys.stderr,end='')
+                sys.stderr.write("\033[K")
+                sys.stderr.flush()
+                if args.gui:
+                    worker.outputLog(" adding "+f)
+                    worker.updateProgress((pos/len(packroot))*70)
+                if groupid:
+                    asset = ET.SubElement(module,'asset', { 'id': str(uuid.uuid5(moduuid,os.path.relpath(image, start=tempdir))), 'parent': groupid})
+                else:
+                    asset = ET.SubElement(module,'asset', { 'id': str(uuid.uuid5(moduuid,os.path.relpath(image, start=tempdir))) })
+                ET.SubElement(asset,'name').text = os.path.splitext(os.path.basename(image))[0]
+                imgext = os.path.splitext(os.path.basename(image))[1]
+                if imgext == ".webm":
+                    try:
+                        if os.path.exists(image):
+                            if args.gui:
+                                worker.outputLog(" - Converting webm tile to spritesheet")
+                            probe = ffprobe(image)
+                            if probe['codec_name'] != 'vp9':
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',image,os.path.splitext(image)[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                            else:
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-i',image,os.path.splitext(image)[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                            ffp.wait()
+                            duration = probe['duration']
+                            framewidth = probe['width']
+                            frameheight = probe['height']
+                            frames = []
+                            for afile in os.listdir(os.path.dirname(image)):
+                                if re.match(re.escape(os.path.splitext(os.path.basename(image))[0])+"-frame[0-9]{5}\.png",afile):
+                                    frames.append(os.path.join(os.path.dirname(image),afile))
+                            def getGrid(n):
+                                i = 1
+                                factors = []
+                                while(i < n+1):
+                                    if n % i == 0:
+                                        factors.append(i)
+                                    i += 1
+                                gw = factors[len(factors)//2]
+                                gh = factors[(len(factors)//2)-1]
+                                if gw*framewidth > 4096 or gh*frameheight > 4096:
+                                    return (gh,gw)
+                                else:
+                                    return (gw,gh)
+                            (gw,gh) = getGrid(len(frames))
+                            with PIL.Image.new('RGBA', (round(framewidth*gw), round(frameheight*gh)), color = (0,0,0,0)) as img:
+                                px = 0
+                                py = 0
+                                for i in range(len(frames)):
+                                    img.paste(PIL.Image.open(frames[i]),(framewidth*px,frameheight*py))
+                                    os.remove(frames[i])
+                                    px += 1
+                                    if px == gw:
+                                        px = 0
+                                        py += 1
+                                if img.width > 4096 or img.height > 4096:
+                                    scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                                    img = img.resize((round(img.width*scale),round(img.height*scale)))
+                                    framewidth = round(framewidth*scale)
+                                    frameheight = round(frameheight*scale)
+                                img.save(os.path.splitext(image)[0]+"-sprite.png")
+                            os.remove(image)
+                        if os.path.exists(os.path.splitext(image)[0]+"-sprite.png"):
+                            ET.SubElement(asset,'type').text = "spriteSheet"
+                            ET.SubElement(asset,'frameWidth').text = str(framewidth)
+                            ET.SubElement(asset,'frameHeight').text = str(frameheight)
+                            ET.SubElement(asset,'duration').text = str(duration)
+                            image = os.path.splitext(os.path.basename(image, start=tempdir))[0]+"-sprite.png"
+                            if os.path.exists(os.path.join(packdir,os.path.basenamne(image))):
+                                exist_count = 1
+                                image_name,image_ext = os.path.splitext(image)
+                                while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
+                                    exist_count += 1
+                                image = "{}{}{}".format(image_name,exist_count,image_ext)
+                            
+                            shutil.copy(image,os.path.join(packdir,os.path.basename(image)))
+                            ET.SubElement(asset,'resource').text = os.path.basename(image)
+                        continue
+                    except Exception:
+                        import traceback
+                        print(traceback.format_exc())
+                        if args.gui:
+                            worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image)
+                        print(" - webm tiles are not supported, consider converting to a spritesheet:",image,file=sys.stderr,end='')
+                    continue
+                else:
+                    ET.SubElement(asset,'type').text = "image"
+                img = PIL.Image.open(image)
+                if imgext == ".webp" and args.jpeg != ".webp":
+                    if img.width > 4096 or img.height > 4096:
+                        scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                        img = img.resize((round(img.width*scale),round(img.height*scale)))
+                    if args.gui:
+                        worker.outputLog(" - Converting tile from webp to png")
+                    img.save(os.path.join(tempdir,os.path.splitext(image)[0]+".png"))
+                    os.remove(image)
+                    image = os.path.join(tempdir,os.path.splitext(image)[0]+".png")
+                else:
+                    if img.width > 4096 or img.height > 4096:
+                        scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                        img = img.resize((round(img.width*scale),round(img.height*scale)))
+                        img.save(os.path.join(tempdir,image))
+                if os.path.exists(os.path.join(packdir,os.path.basename(image))):
+                    exist_count = 1
+                    image_name,image_ext = os.path.splitext(image)
+                    while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
+                        exist_count += 1
+                    image = "{}{}{}".format(image_name,exist_count,image_ext)
+                
+                shutil.copy(image,os.path.join(packdir,os.path.basename(image)))
+                ET.SubElement(asset,'resource').text = os.path.basename(image)
+                if not modimage.text and "preview" in f.lower():
+                    modimage.text = os.path.basename(image)
     for f in folders:
         f['sort'] = sort if 'sort' not in f or f['sort'] == None else f['sort']
         if f['sort'] > maxorder:
@@ -809,7 +987,7 @@ def convert(args=args,worker=None):
         print("\rCreating Folders [{}/{}] {:.0f}%".format(order,len(folders),order/len(folders)*100),file=sys.stderr,end='')
         if f['type'] not in ["JournalEntry","RollTable"]:
             continue
-        folder = ET.SubElement(module,'group', { 'id': str(f['_id']), 'sort': str(int(f['sort'])) } )
+        folder = ET.SubElement(module,'group', { 'id': str(uuid.uuid5(moduuid,f['_id'])), 'sort': str(int(f['sort'])) } )
         ET.SubElement(folder,'name').text = f['name']
         if f['parent'] != None:
             folder.set('parent',f['parent'])
@@ -823,7 +1001,7 @@ def convert(args=args,worker=None):
         if '$$deleted' in j and j['$$deleted']:
             continue
         print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
-        page = ET.SubElement(module,'page', { 'id': str(j['_id']), 'sort': str(j['sort'] or order) } )
+        page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,j['_id'])), 'sort': str(j['sort'] or order) } )
         if 'folder' in j and j['folder'] != None:
             page.set('parent',j['folder'])
         ET.SubElement(page,'name').text = j['name']
@@ -832,7 +1010,7 @@ def convert(args=args,worker=None):
         content.text = j['content'] or ""
         def fixLink(m):
             if m.group(2) == "JournalEntry":
-                return '<a href="/page/{}" {} {} {}>'.format(m.group(4),m.group(1),m.group(3),m.group(5))
+                return '<a href="/page/{}" {} {} {}>'.format(str(uuid.uuid5(moduuid,m.group(4))),m.group(1),m.group(3),m.group(5))
             if m.group(2) == "Actor":
                 for a in actors:
                     if a['_id'] == m.group(4):
@@ -841,11 +1019,11 @@ def convert(args=args,worker=None):
         content.text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,content.text)
         def fixFTag(m):
             if m.group(1) == "JournalEntry":
-                return '<a href="/page/{}">{}</a>'.format(m.group(2),m.group(3) or "Journal Entry")
+                return '<a href="/page/{}">{}</a>'.format(str(uuid.uuid5(moduuid,m.group(2))),m.group(3) or "Journal Entry")
             if m.group(1) == "RollTable":
-                return '<a href="/page/{}">{}</a>'.format(m.group(2),m.group(3) or "Roll Table")
+                return '<a href="/page/{}">{}</a>'.format(str(uuid.uuid5(moduuid,m.group(2))),m.group(3) or "Roll Table")
             if m.group(1) == "Scene":
-                return '<a href="/map/{}">{}</a>'.format(m.group(2),m.group(3) or "Map")
+                return '<a href="/map/{}">{}</a>'.format(str(uuid.uuid5(moduuid,m.group(2))),m.group(3) or "Map")
             if m.group(1) == "Actor":
                 for a in actors:
                     if a['_id'] == m.group(2):
@@ -884,7 +1062,7 @@ def convert(args=args,worker=None):
         if '$$deleted' in p and p['$$deleted']:
             continue
         print("\rConverting playlists [{}/{}] {:.0f}%".format(order,len(playlists),order/len(playlists)*100),file=sys.stderr,end='')
-        page = ET.SubElement(module,'page', { 'id': str(p['_id']), 'parent': playlistsgroup, 'sort': str(p['sort'] if 'sort' in p and p['sort'] else order) } )
+        page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,p['_id'])), 'parent': playlistsgroup, 'sort': str(p['sort'] if 'sort' in p and p['sort'] else order) } )
         ET.SubElement(page,'name').text = p['name']
         ET.SubElement(page,'slug').text = slugify(p['name'])
         content = ET.SubElement(page,'content')
@@ -928,7 +1106,7 @@ def convert(args=args,worker=None):
         if '$$deleted' in t and t['$$deleted']:
             continue
         print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
-        page = ET.SubElement(module,'page', { 'id': str(t['_id']), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
+        page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,t['_id'])), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
         ET.SubElement(page,'name').text = t['name']
         ET.SubElement(page,'slug').text = slugify(t['name'])
         content = ET.SubElement(page,'content')
@@ -1029,10 +1207,13 @@ def convert(args=args,worker=None):
     sys.stderr.write("\033[K")
     if args.gui:
         worker.updateProgress(70)
-        worker.outputLog("Generating module.xml")
+        if args.packdir:
+            worker.outputLog("Generating pack.xml")
+        else:
+            worker.outputLog("Generating module.xml")
     print("\rWriting XML",file=sys.stderr,end='')
     tree = ET.ElementTree(indent(module, 1))
-    tree.write(os.path.join(tempdir,"module.xml"), xml_declaration=True, short_empty_elements=False, encoding='utf-8')
+    tree.write(os.path.join(packdir if args.packdir else tempdir,"pack.xml" if args.packdir else "module.xml"), xml_declaration=True, short_empty_elements=False, encoding='utf-8')
     if 'styles' in mod:
         if not os.path.exists(os.path.join(tempdir,"assets")):
             os.mkdir(os.path.join(tempdir,"assets"))
@@ -1077,7 +1258,7 @@ def convert(args=args,worker=None):
             print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
             if i['type'] in ['feat','spell']:
                 continue
-            item = ET.SubElement(compendium,'item',{'id': i['_id']})
+            item = ET.SubElement(compendium,'item',{'id': str(uuid.uuid5(moduuid,i['_id']))})
             d = i['data']
             ET.SubElement(item,'name').text = i['name']
             ET.SubElement(item,'slug').text = slugify(i['name'])
@@ -1174,7 +1355,7 @@ def convert(args=args,worker=None):
             if args.gui:
                 worker.updateProgress(75+(itemnumber/(len(items)+len(actors)))*10)
             print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
-            monster = ET.SubElement(compendium,'monster',{'id': a['_id']})
+            monster = ET.SubElement(compendium,'monster',{'id': str(uuid.uuid5(moduuid,a['_id']))})
             d = a['data']
             ET.SubElement(monster,'name').text = a['name']
             ET.SubElement(monster,'slug').text = slugify(a['name'])
@@ -1218,7 +1399,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(monster,'environments').text = d['details']['environment']
             if a['img']: a['img'] = urllib.parse.unquote(a['img'])
             if a['img'] and os.path.exists(a['img']):
-                if os.path.splitext(a["img"])[1] == ".webp":
+                if os.path.splitext(a["img"])[1] == ".webp" and args.jpeg != ".webp":
                     PIL.Image.open(a["img"]).save(os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+args.jpeg))
                     os.remove(a["img"])
                     ET.SubElement(monster,'image').text = slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a["img"]))[0]+args.jpeg
@@ -1227,7 +1408,7 @@ def convert(args=args,worker=None):
                     shutil.copy(a['img'],os.path.join(tempdir,"monsters",slugify(a['name'])+"_"+os.path.basename(a['img'])))
             if a['token']['img']: a['token']['img'] = urllib.parse.unquote(a['token']['img'])
             if a['token']['img'] and os.path.exists(a['token']['img']):
-                if os.path.splitext(a['token']["img"])[1] == ".webp":
+                if os.path.splitext(a['token']["img"])[1] == ".webp" and args.jpeg != ".webp":
                     PIL.Image.open(a['token']["img"]).save(os.path.join(tempdir,"monsters","token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"))
                     os.remove(a['token']["img"])
                     ET.SubElement(monster,'image').text = "token_"+slugify(a['name'])+"_"+os.path.splitext(os.path.basename(a['token']["img"]))[0]+".png"
@@ -1265,7 +1446,10 @@ def convert(args=args,worker=None):
     if args.gui:
         worker.updateProgress(90)
         worker.outputLog("Zipping module")
-    zipfilename = "{}.module".format(mod['name'])
+    if args.packdir:
+        zipfilename = "{}.pack".format(mod['name'])
+    else:
+        zipfilename = "{}.module".format(mod['name'])
     # zipfile = shutil.make_archive("module","zip",tempdir)
     if args.output:
         zipfilename = args.output
@@ -1273,6 +1457,8 @@ def convert(args=args,worker=None):
     with zipfile.ZipFile(zipfilename, 'w',compression=zipfile.ZIP_DEFLATED) as zipObj:
        # Iterate over all the files in directory
        for folderName, subfolders, filenames in os.walk(tempdir):
+           if args.packdir and os.path.commonprefix([folderName,packdir]) != packdir:
+               continue
            if args.gui:
                worker.updateProgress(90+10*(zippos/len(list(os.walk(os.path.abspath(tempdir))))))
                zippos += 1
@@ -1282,7 +1468,7 @@ def convert(args=args,worker=None):
                # Add file to zip
                sys.stderr.write("\033[K")
                print("\rAdding: {}".format(filename),file=sys.stderr,end='')
-               zipObj.write(filePath, os.path.relpath(filePath,tempdir)) 
+               zipObj.write(filePath, filename if args.packdir else os.path.relpath(filePath,tempdir)) 
     sys.stderr.write("\033[K")
     print("\rDeleteing temporary files",file=sys.stderr,end='')
     shutil.rmtree(tempdir)
@@ -1387,8 +1573,10 @@ if args.gui:
             self.compendium = QCheckBox(Dialog)
             self.compendium.setGeometry(QRect(30, 240, 171, 31))
             self.compendium.setObjectName("compendium")
-            self.jpeg = QCheckBox(Dialog)
-            self.jpeg.setGeometry(QRect(30, 260, 340, 31))
+            #self.jpeg = QCheckBox(Dialog)
+            self.jpeg = QComboBox(Dialog)
+            self.jpeg.addItems(["Do not convert WebP Files","Convert all WebP Files to PNG","Convert WebP Maps to JPEG & assets to PNG"])
+            self.jpeg.setGeometry(QRect(30, 265, 340, 31))
             self.jpeg.setObjectName("jpeg")
             self.label = QLabel(Dialog)
             self.label.setGeometry(QRect(30, 80, 340, 21))
@@ -1421,9 +1609,16 @@ if args.gui:
             openManifestAct.setStatusTip('Download File from Manifest at URL')
             openManifestAct.triggered.connect(self.openManifest)
 
+            createPackAct = QAction('Create Asset &Pack…', self)
+            createPackAct.setStatusTip('Create an Asset Pack instead of a Module')
+            createPackAct.setEnabled(False)
+            createPackAct.triggered.connect(self.selectPack)
+            self.createPackAct = createPackAct
+
             fileMenu = menubar.addMenu('&File')
             fileMenu.addAction(openAct)
             fileMenu.addAction(openManifestAct)
+            fileMenu.addAction(createPackAct)
             fileMenu.addAction(exitAct)
 
             aboutAct = QAction('&About', self)
@@ -1440,12 +1635,13 @@ if args.gui:
             Dialog.setWindowTitle(_translate("Dialog", "Foundry to Encounter"))
             self.browseButton.setText(_translate("Dialog", "Browse..."))
             self.compendium.setText(_translate("Dialog", "Include Compendium"))
-            self.jpeg.setText(_translate("Dialog", "Convert WebP to JPG instead of PNG"))
+            #self.jpeg.setText(_translate("Dialog", "Convert WebP to JPG instead of PNG"))
             self.convert.setText(_translate("Dialog", "Convert"))
         def __init__(self):
             super(GUI, self).__init__()
             #uic.loadUi('foundrytoencounter.ui', self)
             self.foundryFile = None
+            self.packdir = None
             self.outputFile = ""
             self.worker = Worker()
             self.manifestWorker = ManifestWorker()
@@ -1465,10 +1661,12 @@ if args.gui:
             self.label.setText("")
             self.label.setVisible(False)
             self.convert.setEnabled(False)
+            self.createPackAct.setEnabled(False)
 
         def setFiles(self,filename,name):
             self.foundryFile = filename
             self.outputFile = "{}.module".format(name)
+            self.createPackAct.setEnabled(True)
             self.output.clear()
 
         def openFile(self):
@@ -1496,9 +1694,27 @@ if args.gui:
                 self.setFiles(fileName[0],mod["name"])
                 self.convert.setEnabled(True)
             else:
-                QMessageBox.warning(self,"Invalid","No foundry data was found in this zip file")
-                self.clearFiles()
-                self.openFile()
+                alert = QMessageBox(self)
+                alert.setWindowTitle("Invalid")
+                alert.setText("No foundry data was found in this zip file.\nWould you like to convert it to an asset pack?")
+                alert.setIcon(QMessageBox.Question)
+                alert.setStandardButtons(QMessageBox.Cancel|QMessageBox.Yes)
+                alert.setDefaultButton(QMessageBox.Cancel)
+                btnid = alert.exec_()
+                if btnid == QMessageBox.Cancel:
+                    self.clearFiles()
+                else:
+                    self.label.setText("Asset Pack: {}".format(os.path.splitext(os.path.basename(fileName[0]))[0].title()))
+                    self.setFiles(fileName[0],os.path.splitext(os.path.basename(fileName[0]))[0].title())
+                    self.output.clear()
+                    self.label.setVisible(True)
+                    self.convert.setEnabled(True)
+                    self.packdir = '.'
+                    self.output.setVisible(True)
+                    self.output.append("Will create asset pack with contents of "+fileName[0])
+                    if self.outputFile.endswith(".module"):
+                        self.outputFile = self.outputFile[:-7]+".pack"
+
 
         def openManifest(self):
             manifesturl,okPressed = QInputDialog.getText(self,"Download from Manifest","Manifest URL:",QLineEdit.Normal,"")
@@ -1506,6 +1722,28 @@ if args.gui:
                 self.clearFiles()
                 return
             self.manifestWorker.download(manifesturl)
+
+        def selectPack(self):
+            paths = []
+            with zipfile.ZipFile(self.foundryFile) as z:
+                for filename in z.namelist():
+                    parent,f = os.path.split(filename)
+                    if parent and parent not in paths:
+                        paths.append(parent)
+            packdir,okPressed = QInputDialog.getItem(self,"Create Asset Pack","Create Asset Pack from path:",paths)
+            if not okPressed:
+                self.packdir = None
+                if self.outputFile.endswith(".pack"):
+                    self.outputFile = self.outputFile[:-5]+".module"
+                self.output.clear()
+                self.output.setVisible(False)
+                self.compendium.setEnabled(True)
+            self.packdir = packdir
+            if self.outputFile.endswith(".module"):
+                self.outputFile = self.outputFile[:-7]+".pack"
+            self.compendium.setEnabled(False)
+            self.output.setVisible(True)
+            self.output.append("Will create asset pack with contents of "+self.packdir)
 
         def manifestMessage(self,message):
             if message.startswith("Downloading:"):
@@ -1549,7 +1787,10 @@ if args.gui:
             self.progress.setValue(pct)
 
         def saveFile(self):
-            fileName = QFileDialog.getSaveFileName(self,"Save Converted Module",self.outputFile,"EncounterPlus Module (*.module)")
+            if self.packdir:
+                fileName = QFileDialog.getSaveFileName(self,"Save Asset Pack",self.outputFile,"EncounterPlus Asset Pack (*.pack)")
+            else:
+                fileName = QFileDialog.getSaveFileName(self,"Save Converted Module",self.outputFile,"EncounterPlus Module (*.module)")
             self.outputFile = fileName[0]
             if not fileName[0]:
                 return
@@ -1560,15 +1801,21 @@ if args.gui:
             self.progress.setVisible(True)
             args.srcfile = self.foundryFile
             args.compendium = self.compendium.isChecked()
-            if self.jpeg.isChecked():
+            jpegopt = self.jpeg.currentText()
+            if "JPEG" in jpegopt:
                 args.jpeg = ".jpeg"
-            else:
+            elif "PNG" in jpegopt:
                 args.jpeg = ".png"
+            else:
+                args.jpeg = ".webp"
+            if self.packdir:
+                args.packdir = self.packdir
             print(args)
             self.worker.convert(args)
 
     app = QApplication([])
-    app.setWindowIcon(QIcon(':/Icon.png'))
+    if sys.platform != "linux":
+        app.setWindowIcon(QIcon(':/Icon.png'))
     gui = GUI()
     app.exec_()
 else:
