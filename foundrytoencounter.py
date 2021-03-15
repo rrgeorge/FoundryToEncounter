@@ -825,6 +825,8 @@ def convert(args=args,worker=None):
         packroot = [folder for folder in os.listdir(args.packdir) if os.path.isdir(os.path.join(args.packdir,folder))]
         packroot.append('.')
         pos = 0.00
+        if sys.platform == "win32":
+            args.packdir = args.packdir.replace("/","\\")
         for root,dirs,files in os.walk(args.packdir):
             if args.gui:
                 worker.updateProgress((pos/len(packroot))*70)
@@ -919,10 +921,11 @@ def convert(args=args,worker=None):
                                 image_name,image_ext = os.path.splitext(image)
                                 while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
                                     exist_count += 1
-                                image = "{}{}{}".format(image_name,exist_count,image_ext)
-                            
-                            shutil.copy(image,os.path.join(packdir,os.path.basename(image)))
-                            ET.SubElement(asset,'resource').text = os.path.basename(image)
+                                newimage = "{}{}{}".format(image_name,exist_count,image_ext)
+                            else:
+                                newimage = image
+                            shutil.copy(image,os.path.join(packdir,os.path.basename(newimage)))
+                            ET.SubElement(asset,'resource').text = os.path.basename(newimage)
                         continue
                     except Exception:
                         import traceback
@@ -953,12 +956,13 @@ def convert(args=args,worker=None):
                     image_name,image_ext = os.path.splitext(image)
                     while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
                         exist_count += 1
-                    image = "{}{}{}".format(image_name,exist_count,image_ext)
-                
-                shutil.copy(image,os.path.join(packdir,os.path.basename(image)))
-                ET.SubElement(asset,'resource').text = os.path.basename(image)
+                    newimage = "{}{}{}".format(image_name,exist_count,image_ext)
+                else:
+                    newimage = image
+                shutil.copy(image,os.path.join(packdir,os.path.basename(newimage)))
+                ET.SubElement(asset,'resource').text = os.path.basename(newimage)
                 if not modimage.text and "preview" in f.lower():
-                    modimage.text = os.path.basename(image)
+                    modimage.text = os.path.basename(newimage)
     for f in folders:
         f['sort'] = sort if 'sort' not in f or f['sort'] == None else f['sort']
         if f['sort'] > maxorder:
