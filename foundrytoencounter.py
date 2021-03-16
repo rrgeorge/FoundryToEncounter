@@ -936,21 +936,21 @@ def convert(args=args,worker=None):
                     continue
                 else:
                     ET.SubElement(asset,'type').text = "image"
-                img = PIL.Image.open(image)
-                if imgext == ".webp" and args.jpeg != ".webp":
-                    if img.width > 4096 or img.height > 4096:
-                        scale = 4095/img.width if img.width>=img.height else 4095/img.height
-                        img = img.resize((round(img.width*scale),round(img.height*scale)))
-                    if args.gui:
-                        worker.outputLog(" - Converting tile from webp to png")
-                    img.save(os.path.join(tempdir,os.path.splitext(image)[0]+".png"))
-                    os.remove(image)
-                    image = os.path.join(tempdir,os.path.splitext(image)[0]+".png")
-                else:
-                    if img.width > 4096 or img.height > 4096:
-                        scale = 4095/img.width if img.width>=img.height else 4095/img.height
-                        img = img.resize((round(img.width*scale),round(img.height*scale)))
-                        img.save(os.path.join(tempdir,image))
+                with PIL.Image.open(image) as img:
+                    if imgext == ".webp" and args.jpeg != ".webp":
+                        if img.width > 4096 or img.height > 4096:
+                            scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                            img = img.resize((round(img.width*scale),round(img.height*scale)))
+                        if args.gui:
+                            worker.outputLog(" - Converting tile from webp to png")
+                        img.save(os.path.join(tempdir,os.path.splitext(image)[0]+".png"))
+                        os.remove(image)
+                        image = os.path.join(tempdir,os.path.splitext(image)[0]+".png")
+                    else:
+                        if img.width > 4096 or img.height > 4096:
+                            scale = 4095/img.width if img.width>=img.height else 4095/img.height
+                            img = img.resize((round(img.width*scale),round(img.height*scale)))
+                            img.save(os.path.join(tempdir,image))
                 if os.path.exists(os.path.join(packdir,os.path.basename(image))):
                     exist_count = 1
                     image_name,image_ext = os.path.splitext(image)
@@ -1512,9 +1512,13 @@ if args.gui:
             except Exception:
                 import traceback
                 self.message.emit(traceback.format_exc())
+                global tempdir
                 if tempdir:
-                    shutil.rmtree(tempdir)
-                    tempdir = None
+                    try:
+                        shutil.rmtree(tempdir)
+                        tempdir = None
+                    except:
+                        pass
 
     class ManifestWorker(QThread):
         def __init__(self,parent = None):
