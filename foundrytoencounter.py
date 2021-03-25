@@ -21,6 +21,10 @@ import random
 import html
 import magic
 import subprocess
+from google.protobuf import text_format
+import fonts_public_pb2
+
+zipfile.ZIP64_LIMIT = 4294967294
 
 try:
     ffmpeg_path = shutil.which("ffmpeg") or shutil.which("ffmpeg",path=os.defpath)
@@ -90,6 +94,13 @@ parser.add_argument(
     const=".jpg",
     default=".png",
     help="convert WebP to JPG instead of PNG")
+parser.add_argument(
+    '-nc',
+    dest="noconv",
+    action='store_const',
+    const=True,
+    default=False,
+    help="Do not convert WebP")
 parserg = parser.add_mutually_exclusive_group()
 parserg.add_argument(
     dest="srcfile",
@@ -105,6 +116,8 @@ parserg.add_argument(
     const=True,
     help="use graphical interface")
 args = parser.parse_args()
+if args.noconv and args.jpeg == ".jpg":
+    args.jpeg = ".webp"
 if not args.srcfile and not args.gui:
     if sys.platform in ['darwin','win32']:
         args.gui = True
@@ -194,7 +207,7 @@ def convert(args=args,worker=None):
             map['shiftX'] *= map["rescale"]
             map['shiftY'] *= map["rescale"]
 
-        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
+        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id']+map['name'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
         ET.SubElement(mapentry,'name').text = map['name']
         ET.SubElement(mapentry,'slug').text = mapslug
         ET.SubElement(mapentry,'gridScale').text = str(round(map["gridDistance"]))#*((5.0/map["gridDistance"]))))
@@ -207,39 +220,41 @@ def convert(args=args,worker=None):
         if map["img"] and os.path.exists(urllib.parse.unquote(map["img"])):
             map["img"] = urllib.parse.unquote(map["img"])
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
-            if imgext == ".webm":
+            if imgext == ".webm" or imgext == ".mp4":
                 try:
-                    if args.gui:
-                        worker.outputLog("Converting video map")
-                    duration = ffprobe(map["img"])["duration"]
-                    ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-                    with open('ffmpeg.log','a+') as f:
-                        logged = False
-                        while ffp.poll() is None:
-                            l = f.readline()
-                            m = re.match(r'(.*?)=(.*)',l)
-                            if m:
-                                key = m.group(1)
-                                val = m.group(2)
-                                if key == "out_time_us":
-                                    if not logged:
-                                        print(" webm->mp4:    ",file=sys.stderr,end='')
-                                        logged = True
-                                    elif pct >= 100:
-                                        print("\b",file=sys.stderr,end='')
-                                    pos = round(float(val)/10000,2)
-                                    pct = round(pos/duration)
-                                    print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
-                                    if args.gui:
-                                        worker.updateProgress(pct)
-                                    sys.stderr.flush()
-                    os.remove('ffmpeg.log')
+                    if imgext == ".webm":
+                        if args.gui:
+                            worker.outputLog("Converting video map")
+                        duration = ffprobe(map["img"])["duration"]
+                        ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                        with open('ffmpeg.log','a+') as f:
+                            logged = False
+                            while ffp.poll() is None:
+                                l = f.readline()
+                                m = re.match(r'(.*?)=(.*)',l)
+                                if m:
+                                    key = m.group(1)
+                                    val = m.group(2)
+                                    if key == "out_time_us":
+                                        if not logged:
+                                            print(" webm->mp4:    ",file=sys.stderr,end='')
+                                            logged = True
+                                        elif pct >= 100:
+                                            print("\b",file=sys.stderr,end='')
+                                        pos = round(float(val)/10000,2)
+                                        pct = round(pos/duration)
+                                        print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
+                                        if args.gui:
+                                            worker.updateProgress(pct)
+                                        sys.stderr.flush()
+                        os.remove('ffmpeg.log')
                     ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vframes','1',os.path.splitext(map["img"])[0]+".jpg"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                     print("\b"*16,file=sys.stderr,end='')
                     print(" extracting still",file=sys.stderr,end='')
                     sys.stderr.flush()
                     ffp.wait()
-                    os.remove(map["img"])
+                    if imgext == ".webm":
+                        os.remove(map["img"])
                     map["img"] = os.path.splitext(map["img"])[0]+".jpg"
                     ET.SubElement(mapentry,'video').text = os.path.splitext(map["img"])[0]+".mp4"
                 except Exception:
@@ -536,7 +551,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
 
         if 'tokens' in map and len(map['tokens']) > 0:
-            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': str(uuid.uuid5(moduuid,map['_id'])), 'sort': '1'})
+            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])), 'sort': '1'})
             ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
             ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map['tokens']:
@@ -565,9 +580,17 @@ def convert(args=args,worker=None):
                                 font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
                             except Exception:
                                 try:
-                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/{}.ttf".format(d['fontFamily'].lower(),d['fontFamily']),d['fontFamily'] + ".ttf")
+                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/METADATA.pb".format(d['fontFamily'].lower()),d['fontFamily'] + ".pb")
+                                    protobuf_file_path = d['fontFamily'] + ".pb"
+                                    protobuf_file = open(protobuf_file_path, 'r')
+                                    protobuf = protobuf_file.read()
+                                    font_family = fonts_public_pb2.FamilyProto()
+                                    text_format.Merge(protobuf, font_family)
+                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/{}".format(d['fontFamily'].lower(),font_family.fonts[0].filename),d['fontFamily'] + ".ttf")
                                     font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
-                                except Exception:
+                                except Exception as e:
+                                    print(e)
+                                    print("\rUnable to load font for \"{}\"".format(d['fontFamily']),file=sys.stderr,end='')
                                     font = PIL.ImageFont.load_default()
                         text = d['text']
                         draw = PIL.ImageDraw.Draw(img)
@@ -621,13 +644,15 @@ def convert(args=args,worker=None):
                 ET.SubElement(marker,'y').text = str(round((s['y']-map["offsetY"])*map["rescale"]))
                 ET.SubElement(marker,'hidden').text = 'YES'
                 ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,s['_id']))) })
-                page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id'])) } )
+                page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,map['_id']+map['name']+s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])) } )
                 ET.SubElement(page,'name').text = map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
                 ET.SubElement(page,'slug').text = slugify(map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0])
                 content = ET.SubElement(page,'content')
                 content.text = "<h1>Sound: {}</h1>".format(s['name'] if 'name' in s else os.path.splitext(os.path.basename(s['path']))[0])
                 content.text += '<figure id={}>'.format(s['_id'])
                 content.text += '<figcaption>{}</figcaption>'.format(s['name'] if 'name' in s else os.path.splitext(os.path.basename(s['path']))[0])
+                if not os.path.exists(s['path']) and os.path.exists(os.path.splitext(s['path'])[0]+".mp4"):
+                    s['path'] = os.path.splitext(s['path'])[0]+".mp4"
                 if os.path.exists(s['path']):
                     if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
                         try:
@@ -637,7 +662,10 @@ def convert(args=args,worker=None):
                             s["path"] = os.path.splitext(s["path"])[0]+".mp4"
                         except Exception:
                             print ("Could not convert to MP4")
-                    content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
+                    try:
+                        content.text += '<audio controls {}><source src="{}" type="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'],magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True))
+                    except:
+                        content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
                 else:
                     content.text += '<audio controls {}><source src="{}"></audio>'.format(" loop" if s['repeat'] else "",s['path'])
                 content.text += '</figure>'
@@ -1079,6 +1107,8 @@ def convert(args=args,worker=None):
             content.text += '<tr>'
             content.text += '<td><figure>'
             content.text += '<figcaption>{}</figcaption>'.format(s['name'])
+            if not os.path.exists(s['path']) and os.path.exists(os.path.splitext(s['path'])[0]+".mp4"):
+                s['path'] = os.path.splitext(s['path'])[0]+".mp4"
             if os.path.exists(s['path']):
                 if magic.from_file(os.path.join(tempdir,urllib.parse.unquote(s['path'])),mime=True) not in ["audio/mp3","audio/mpeg","audio/wav","audio/mp4","video/mp4"]:
                     try:
@@ -1188,15 +1218,21 @@ def convert(args=args,worker=None):
             print("\rConverting maps [{}/{}] {:.0f}%".format(mapcount,len(maps),mapcount/len(maps)*100),file=sys.stderr,end='')
             createMap(map,mapgroup)
     if not modimage.text and len(maps) > 0:
-        map = random.choice(maps)
-        while '$$deleted' in map and mapcount > 0:
+        randomok = False
+        while not randomok:
             map = random.choice(maps)
+            while '$$deleted' in map and mapcount > 0:
+                map = random.choice(maps)
+            if not os.path.exists(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])):
+                if os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+args.jpeg):
+                    map["img"] = os.path.splitext(map["img"])[0]+args.jpeg
+                elif os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+".jpg"):
+                    map["img"] = os.path.splitext(map["img"])[0]+".jpg"
+            if os.path.exists(map["img"]):
+                randomok = True
         if args.gui:
             worker.outputLog("Generating cover image")
         print("\rGenerating cover image",file=sys.stderr,end='')
-        if not os.path.exists(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])):
-            if os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+args.jpeg):
-                map["img"] = os.path.splitext(map["img"])[0]+args.jpeg
         with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
             if img.width >= img.width:
                 img.crop((0,0,img.width,img.width))
@@ -1458,7 +1494,7 @@ def convert(args=args,worker=None):
     if args.output:
         zipfilename = args.output
     zippos = 0
-    with zipfile.ZipFile(zipfilename, 'w',compression=zipfile.ZIP_DEFLATED) as zipObj:
+    with zipfile.ZipFile(zipfilename, 'w',allowZip64=False,compression=zipfile.ZIP_DEFLATED,compresslevel=9) as zipObj:
        # Iterate over all the files in directory
        for folderName, subfolders, filenames in os.walk(tempdir):
            if args.packdir and os.path.commonprefix([folderName,packdir]) != packdir:
@@ -1467,12 +1503,14 @@ def convert(args=args,worker=None):
                worker.updateProgress(90+10*(zippos/len(list(os.walk(os.path.abspath(tempdir))))))
                zippos += 1
            for filename in filenames:
+               if filename.startswith("."):
+                   continue
                #create complete filepath of file in directory
                filePath = os.path.join(folderName, filename)
                # Add file to zip
                sys.stderr.write("\033[K")
                print("\rAdding: {}".format(filename),file=sys.stderr,end='')
-               zipObj.write(filePath, filename if args.packdir else os.path.relpath(filePath,tempdir)) 
+               zipObj.write(filePath, filename if args.packdir else os.path.relpath(filePath,tempdir))
     sys.stderr.write("\033[K")
     print("\rDeleteing temporary files",file=sys.stderr,end='')
     shutil.rmtree(tempdir)
