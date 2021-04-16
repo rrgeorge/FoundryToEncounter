@@ -186,37 +186,51 @@ def convert(args=args,worker=None):
             bg = map["tiles"].pop(0)
             bg["img"] = urllib.parse.unquote(bg["img"])
             imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
-            if not imgext:
-                imgext = args.jpeg
-            if imgext == ".webp" and args.jpeg != ".webp":
-                PIL.Image.open(bg["img"]).save(os.path.join(tempdir,os.path.splitext(bg["img"])[0]+args.jpeg))
-                os.remove(bg["img"])
-                map["img"] = os.path.splitext(bg["img"])[0]+args.jpeg
-            else:
-                map["img"] = bg["img"]
-            map["shiftX"] = bg["x"]-map["offsetX"]
-            map["shiftY"] = bg["y"]-map["offsetY"]
-            map["width"] = bg["width"]
-            map["height"] = bg["height"]
+            with PIL.Image.new('RGB', (map["width"], map["height"]), color = 'black') as img:
+                bgimg = PIL.Image.open(bg["img"])
+                bg["x"] = round(bg["x"]-map["offsetX"])
+                bg["y"] = round(bg["y"]-map["offsetY"])
+                if bg["scale"] != 1:
+                    bgimg = bgimg.resize((round(bgimg.width*bg["scale"]),round(bgimg.height*bg["scale"])))
+                if bg["x"] > 0 and (bgimg.width + bg["x"]) > img.width:
+                    bgimg = bgimg.crop((0,0,bgimg.width-bg["x"],bgimg.height))
+                elif bg["x"] < 0:
+                    bgimg = bgimg.crop((bg["x"]*-1,0,bgimg.width+bg["x"],bgimg.height))
+                    bg["x"] = 0
+                if bg["y"] > 0 and (bgimg.width + bg["y"]) > img.width:
+                    bgimg = bgimg.crop((0,0,bgimg.width, bgimg.height-bg["y"]))
+                elif bg["y"] < 0:
+                    bgimg = bgimg.crop((0,bg["y"]*-1,bgimg.width,bgimg.height+bg["y"]))
+                    bg["y"] = 0
+                img.paste(bgimg,(bg["x"],bg["y"]))
+                if args.jpeg == ".webp":
+                    img.save(os.path.join(tempdir,mapslug+"_bg.webp"))
+                    map["img"] = mapslug+"_bg.webp"
+                else:
+                    img.save(os.path.join(tempdir,mapslug+"_bg.jpg"))
+                    map["img"] = mapslug+"_bg.jpg"
+#            if not imgext:
+#                imgext = args.jpeg
+#            if imgext == ".webp" and args.jpeg != ".webp":
+#                PIL.Image.open(bg["img"]).save(os.path.join(tempdir,os.path.splitext(bg["img"])[0]+args.jpeg))
+#                os.remove(bg["img"])
+#                map["img"] = os.path.splitext(bg["img"])[0]+args.jpeg
+#            else:
+#                map["img"] = bg["img"]
+#            map["shiftX"] = bg["x"]-map["offsetX"]
+#            map["shiftY"] = bg["y"]-map["offsetY"]
+#            map["width"] = bg["width"]
+#            map["height"] = bg["height"]
         map["rescale"] = 1.0
         if map["width"] > 8192 or map["height"] > 8192:
             map["rescale"] = 8192.0/map["width"] if map["width"] >= map["height"] else 8192.0/map["height"]
-            map["grid"] = round(map["grid"]*map["rescale"])
             map["width"] *= round(map["rescale"])
             map["height"] *= round(map["rescale"])
-            map['shiftX'] *= map["rescale"]
-            map['shiftY'] *= map["rescale"]
 
-        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id']+map['name'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
+
+        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
         ET.SubElement(mapentry,'name').text = map['name']
         ET.SubElement(mapentry,'slug').text = mapslug
-        ET.SubElement(mapentry,'gridScale').text = str(round(map["gridDistance"]))#*((5.0/map["gridDistance"]))))
-        ET.SubElement(mapentry,'gridUnits').text = str(map["gridUnits"])
-        ET.SubElement(mapentry,'gridVisible').text = "YES" if map['gridAlpha'] > 0 else "NO"
-        ET.SubElement(mapentry,'gridColor').text = map['gridColor']
-        ET.SubElement(mapentry,'gridOffsetX').text = str(round(map['shiftX']))
-        ET.SubElement(mapentry,'gridOffsetY').text = str(round(map['shiftY']))
-
         if map["img"] and os.path.exists(urllib.parse.unquote(map["img"])):
             map["img"] = urllib.parse.unquote(map["img"])
             imgext = os.path.splitext(os.path.basename(map["img"]))[1]
@@ -268,11 +282,23 @@ def convert(args=args,worker=None):
             else:
                 ET.SubElement(mapentry,'image').text = map["img"]
             with PIL.Image.open(map["img"]) as img:
+                if (map["width"]/map["height"]) != (img.width/img.height):
+                    if img.width >= img.height:
+                        neww = img.width if img.width <= 8192 else 8192
+                        newh = round(neww*(map["height"]/map["width"]))
+                    else:
+                        newh = img.height if img.height <= 8192 else 8192
+                        neww = round(newh*(map["width"]/map["height"]))
+                    if newh != img.height or neww != img.width:
+                        print("Resizing {}x{} to {}x{} ({})".format(img.width,img.height,neww,newh,(map["width"]/map["height"])))
+                        img = img.resize((neww,newh))
+                        img.save(os.path.join(tempdir,map["img"]))
                 if img.width > 8192 or img.height > 8192:
                     scale = 8192/img.width if img.width>=img.height else 8192/img.height
                     if args.gui:
                         worker.outputLog(" - Resizing map from {}x{} to {}x{}".format(img.width,img.height,round(img.width*scale),round(img.height*scale)))
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
+                    print("Resized to {}x{}".format(img.width,img.height))
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if args.gui:
                             worker.outputLog(" - Converting map from .webp to " + args.jpeg)
@@ -310,7 +336,7 @@ def convert(args=args,worker=None):
                 else:
                     map["scale"] = 1.0
 
-                ET.SubElement(mapentry,'image').text = mapslug+"_bg.png"
+                ET.SubElement(mapentry,'image').text = mapslug+"_bg" + args.jpeg
             if 'thumb' in map and map["thumb"] and os.path.exists(map["thumb"]):
                 imgext = os.path.splitext(os.path.basename(map["img"]))[1]
                 if imgext == ".webp" and args.jpeg != ".webp":
@@ -320,8 +346,37 @@ def convert(args=args,worker=None):
                 else:
                     ET.SubElement(mapentry,'snapshot').text = map["thumb"]
 
-        ET.SubElement(mapentry,'gridSize').text = str(round(map["grid"]*map["rescale"]))#*(5.0/map["gridDistance"])))
-        ET.SubElement(mapentry,'scale').text = str(map["scale"])
+        map["grid"] *= map["rescale"]
+        map['shiftX'] *= map["rescale"]
+        map['shiftY'] *= map["rescale"]
+        if round(map["grid"]) != map["grid"]:
+            map["realign"] = round(map['grid'])/map['grid']
+        elif map["gridType"] > 1 and round(map["grid"]/2.0) != (map["grid"]/2.0):
+            map["realign"] = round(map["grid"]/2.0)/(map["grid"]/2.0)
+        else:
+            map["realign"] = 1.0
+        if map["gridType"] > 1:
+            map["grid"] = round(map["grid"]/2.0)
+            if 2 <= map["gridType"] <= 3:
+                if map["gridType"] == 2:
+                    map['shiftY'] += map["grid"]
+                else:
+                    map['shiftY'] -= map["grid"]/2.0
+            elif 4 <= map["gridType"] <= 5:
+                if map["gridType"] == 5:
+                    map['shiftX'] -= map["grid"]
+            map['shiftX'] *= map["realign"]
+            map['shiftY'] *= map["realign"]
+        map["rescale"] *= map["realign"]
+        ET.SubElement(mapentry,'gridSize').text = str(round(map["grid"]))
+        ET.SubElement(mapentry,'scale').text = str(map["scale"]*map["realign"])
+        ET.SubElement(mapentry,'gridScale').text = str(round(map["gridDistance"]))
+        ET.SubElement(mapentry,'gridUnits').text = str(map["gridUnits"])
+        ET.SubElement(mapentry,'gridVisible').text = "NO" if map["gridType"] == 0 else "YES" if map['gridAlpha'] > 0 else "NO"
+        ET.SubElement(mapentry,'gridColor').text = map['gridColor']
+        ET.SubElement(mapentry,'gridOffsetX').text = str(round(map['shiftX']))
+        ET.SubElement(mapentry,'gridOffsetY').text = str(round(map['shiftY']))
+        ET.SubElement(mapentry,'gridType').text = "hexFlat" if 4 <= map["gridType"] <= 5 else "hexPointy" if 2 <= map["gridType"] <= 3 else "square"
         if "walls" in map and len(map["walls"])>0:
             ET.SubElement(mapentry,'lineOfSight').text = "YES"
             for i in range(len(map["walls"])):
@@ -528,46 +583,87 @@ def convert(args=args,worker=None):
             for i in range(len(map["lights"])):
                 print("\rlights [{}/{}]".format(i,len(map["lights"])),file=sys.stderr,end='')
                 light = map["lights"][i]
-                tile = ET.SubElement(mapentry,'tile')
-                ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"])))
-                ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"])))
-                ET.SubElement(tile,'zIndex').text = str(0)
-                ET.SubElement(tile,'width').text = str(round(50*map["rescale"]))
-                ET.SubElement(tile,'height').text = str(round(50*map["rescale"]))
-                ET.SubElement(tile,'opacity').text = "1.0"
-                ET.SubElement(tile,'rotation').text = str(0)
-                ET.SubElement(tile,'locked').text = "YES"
-                ET.SubElement(tile,'layer').text = "dm"
-                ET.SubElement(tile,'hidden').text = "YES"
+                #tile = ET.SubElement(mapentry,'tile')
+                #ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"])))
+                #ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"])))
+                #ET.SubElement(tile,'zIndex').text = str(0)
+                #ET.SubElement(tile,'width').text = str(round(50*map["rescale"]))
+                #ET.SubElement(tile,'height').text = str(round(50*map["rescale"]))
+                #ET.SubElement(tile,'opacity').text = "1.0"
+                #ET.SubElement(tile,'rotation').text = str(0)
+                #ET.SubElement(tile,'locked').text = "YES"
+                #ET.SubElement(tile,'layer').text = "dm"
+                #ET.SubElement(tile,'hidden').text = "YES"
 
-                asset = ET.SubElement(tile,'asset', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)))})
-                ET.SubElement(asset,'name').text = "Light {}".format(i+1)
+                #asset = ET.SubElement(tile,'asset', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)))})
+                #ET.SubElement(asset,'name').text = "Light {}".format(i+1)
 
-                lightel = ET.SubElement(tile,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
+                lightel = ET.SubElement(mapentry,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
                 ET.SubElement(lightel,'radiusMax').text = str(round(light["dim"]))
                 ET.SubElement(lightel,'radiusMin').text = str(round(light["bright"]))
                 ET.SubElement(lightel,'color').text = light["tintColor"] if "tintColor" in light and light["tintColor"] else "#ffffff"
                 ET.SubElement(lightel,'opacity').text = str(light["tintAlpha"])
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
+                ET.SubElement(lightel,'x').text = str(round((light["x"]-map["offsetX"])*map["rescale"]))
+                ET.SubElement(lightel,'y').text = str(round((light["y"]-map["offsetY"])*map["rescale"]))
 
         if 'tokens' in map and len(map['tokens']) > 0:
-            encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])), 'sort': '1'})
-            ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
-            ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
+            #encentry = ET.SubElement(module,'encounter',{'id': str(uuid.uuid5(moduuid,mapslug+"/encounter")),'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])), 'sort': '1'})
+            #ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
+            #ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map['tokens']:
-                combatant = ET.SubElement(encentry,'combatant')
-                ET.SubElement(combatant,'name').text = token['name']
-                ET.SubElement(combatant,'role').text = "hostile" if token['disposition'] < 0 else "friendly" if token['disposition'] > 0 else "neutral"
-                ET.SubElement(combatant,'x').text = str(round((token['x']-map["offsetX"])*map["rescale"]))
-                ET.SubElement(combatant,'y').text = str(round((token['y']-map["offsetY"])*map["rescale"]))
+                if 4 <= map["gridType"] <= 5:
+                    tokenOffsetX = round(((2*map["grid"]*.75*token["width"])+(map["grid"]/2))/2)
+                    tokenOffsetY = round((math.sqrt(3)*map["grid"]*token["height"])/2)
+                    if map["gridType"] == 5:
+                        tokenOffsetX += round(map["grid"])
+                    token["scale"] /= .8
+                elif 2 <= map["gridType"] <= 3:
+                    tokenOffsetX = round((math.sqrt(3)*map["grid"]*token["width"])/2)
+                    tokenOffsetY = round(((2*map["grid"]*.75*token["height"])+(map["grid"]/2))/2)
+                    if map["gridType"] == 3:
+                        tokenOffsetX += round(map["grid"])
+                else:
+                    tokenOffsetX = round(token['width']*(map["grid"]/2))
+                    tokenOffsetY = round(token['height']*(map["grid"]/2))
+                tokenel = ET.SubElement(mapentry,'token',{ 'id': str(uuid.uuid5(moduuid,mapslug+'/token/'+token['_id'])) })
+                ET.SubElement(tokenel,'name').text = token['name']
+                ET.SubElement(tokenel,'x').text = str(round(((token['x']-map["offsetX"])*map["rescale"]))+tokenOffsetX)
+                ET.SubElement(tokenel,'y').text = str(round(((token['y']-map["offsetY"])*map["rescale"]))+tokenOffsetY)
+
+                if os.path.exists(token["img"]):
+                    tokenasset = ET.SubElement(tokenel,'asset',{ 'id': str(uuid.uuid5(moduuid,mapslug+'/token/'+token['_id']+'/asset')) })
+                    ET.SubElement(tokenasset,'name').text = token['name']
+                    ET.SubElement(tokenasset,'type').text = 'image'
+                    ET.SubElement(tokenasset,'resource').text = token["img"]
+                ET.SubElement(tokenel,'hidden').text = "YES" if token["hidden"] else "NO"
+                ET.SubElement(tokenel,'scale').text = str(token["scale"])
+                if token["width"] == token["height"] and 1 <= token["width"] <= 6:
+                    ET.SubElement(tokenel,'size').text = "C" if token["width"] > 4 else "G" if token["width"] > 3 else "H" if token["width"] > 2 else "L" if token["width"] > 1 else "M"
+                elif token["width"] == token["height"] and token["width"] < 1:
+                    ET.SubElement(tokenel,'size').text = "T" if token["width"] <= 0.5 else "S"
+                else:
+                    ET.SubElement(tokenel,'size').text = "{}x{}".format(token["width"],token["height"])
+                ET.SubElement(tokenel,'rotation').text = str(token["rotation"])
+                ET.SubElement(tokenel,'elevation').text = str(token["elevation"])
+                vision = ET.SubElement(tokenel,'vision',{ 'id': str(uuid.uuid5(moduuid,mapslug+'/token/'+token['_id']+'/vision')) })
+                ET.SubElement(vision,'enabled').text = "YES" if token["vision"] else "NO"
+                ET.SubElement(vision,'light').text = "YES" if token["dimLight"] > 0 or token["brightLight"] > 0 else "NO"
+                ET.SubElement(vision,'lightRadiusMin').text = str(round(token["brightLight"]))
+                ET.SubElement(vision,'lightRadiusMax').text = str(round(token["dimLight"]))
+                ET.SubElement(vision,'lightOpacity').text = str(token["lightAlpha"])
+                ET.SubElement(vision,'dark').text = "YES" if token["dimSight"] > 0 or token["brightSight"] > 0 else "NO"
+                ET.SubElement(vision,'darkRadiusMin').text = str(round(token["brightSight"]))
+                ET.SubElement(vision,'darkRadiusMax').text = str(round(token["dimSight"]))
+
                 actorLinked = False
                 for a in actors:
                     if a['_id'] == token['actorId']:
-                        ET.SubElement(combatant,'monster', { 'ref': "/monster/{}".format(slugify(a['name'])) })
+                        ET.SubElement(tokenel,'reference').text = "/monster/{}".format(slugify(a['name']))
                         actorLinked = True
                         break
                 if not actorLinked:
-                    ET.SubElement(combatant,'monster', { 'ref': "/monster/{}".format(slugify(token['name'])) })
+                    ET.SubElement(tokenel,'reference').text = "/monster/{}".format(slugify(token['name']))
 
         if 'drawings' in map and len(map['drawings']) > 0:
             for d in map['drawings']:
@@ -630,8 +726,8 @@ def convert(args=args,worker=None):
 
                     points = []
                     for p in d['points']:
-                        points.append(str(p[0]*map["rescale"]))
-                        points.append(str(p[1]*map["rescale"]))
+                        points.append(str((p[0]-map["offsetX"]+d["x"])*map["rescale"]))
+                        points.append(str((p[1]-map["offsetY"]+d["y"])*map["rescale"]))
                     ET.SubElement(drawing,'data').text = ",".join(points)
 
         if 'sounds' in map and len(map['sounds']) > 0:
@@ -643,7 +739,7 @@ def convert(args=args,worker=None):
                 ET.SubElement(marker,'x').text = str(round((s['x']-map["offsetX"])*map["rescale"]))
                 ET.SubElement(marker,'y').text = str(round((s['y']-map["offsetY"])*map["rescale"]))
                 ET.SubElement(marker,'hidden').text = 'YES'
-                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,s['_id']))) })
+                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,map['_id']+map['name']+s['_id']))) })
                 page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,map['_id']+map['name']+s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])) } )
                 ET.SubElement(page,'name').text = map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
                 ET.SubElement(page,'slug').text = slugify(map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0])
@@ -684,7 +780,7 @@ def convert(args=args,worker=None):
                 pct = 100.00*((block_num * block_size)/total_size)
                 print("\rDownloading module {:.2f}%".format(pct),file=sys.stderr,end='')
             urllib.request.urlretrieve(manifest['download'],os.path.join(tempdir,"module.zip"),progress)
-            print("\r".format(pct),file=sys.stderr,end='')
+            print("\r",file=sys.stderr,end='')
             args.srcfile = os.path.join(tempdir,"module.zip")
 
     with zipfile.ZipFile(args.srcfile) as z:
@@ -1035,7 +1131,7 @@ def convert(args=args,worker=None):
         print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,j['_id'])), 'sort': str(j['sort'] or order) } )
         if 'folder' in j and j['folder'] != None:
-            page.set('parent',j['folder'])
+            page.set('parent',str(uuid.uuid5(moduuid,j['folder'])))
         ET.SubElement(page,'name').text = j['name']
         ET.SubElement(page,'slug').text = slugify(j['name'])
         content = ET.SubElement(page,'content')
@@ -1200,12 +1296,12 @@ def convert(args=args,worker=None):
                     if os.path.exists(os.path.splitext(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"]))[0]+args.jpeg):
                         map["img"] = os.path.splitext(map["img"])[0]+args.jpeg
                 with PIL.Image.open(urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])) as img:
-                    if img.width >= img.width:
-                        img.crop((0,0,img.width,img.width))
+                    if img.width <= img.height:
+                        img = img.crop((0,0,img.width,img.width))
                     else:
-                        img.crop((0,0,img.height,img.height))
+                        img = img.crop((0,0,img.height,img.height))
                     if img.width > 1024:
-                        img.resize((1024,1024))
+                        img = img.resize((1024,1024))
                     if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"): img = img.convert("RGB")
                     img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
                 modimage.text = "module_cover" + args.jpeg
@@ -1234,12 +1330,12 @@ def convert(args=args,worker=None):
             worker.outputLog("Generating cover image")
         print("\rGenerating cover image",file=sys.stderr,end='')
         with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
-            if img.width >= img.width:
-                img.crop((0,0,img.width,img.width))
+            if img.width <= img.height:
+                img = img.crop((0,0,img.width,img.width))
             else:
-                img.crop((0,0,img.height,img.height))
+                img = img.crop((0,0,img.height,img.height))
             if img.width > 1024:
-                img.resize((1024,1024))
+                img = img.resize((1024,1024))
             if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"): img = img.convert("RGB")
             img.save(os.path.join(tempdir,"module_cover" + args.jpeg))
         modimage.text = "module_cover" + args.jpeg
@@ -1494,7 +1590,7 @@ def convert(args=args,worker=None):
     if args.output:
         zipfilename = args.output
     zippos = 0
-    with zipfile.ZipFile(zipfilename, 'w',allowZip64=False,compression=zipfile.ZIP_DEFLATED,compresslevel=9) as zipObj:
+    with zipfile.ZipFile(zipfilename, 'w',allowZip64=False,compression=zipfile.ZIP_DEFLATED) as zipObj:
        # Iterate over all the files in directory
        for folderName, subfolders, filenames in os.walk(tempdir):
            if args.packdir and os.path.commonprefix([folderName,packdir]) != packdir:
