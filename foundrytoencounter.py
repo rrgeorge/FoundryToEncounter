@@ -193,29 +193,30 @@ def convert(args=args,worker=None):
         mapbaseslug = slugify(map['name'])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
         slugs.append(mapslug)
-        if not map["img"] and map["tiles"][0]["width"] >= (map["width"]*.9) and map["tiles"][0]["height"] >= (map["height"]*.9):
-            bg = map["tiles"].pop(0)
-            bg["img"] = urllib.parse.unquote(bg["img"])
-            imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
-            with PIL.Image.new('RGB', (map["width"], map["height"]), color = 'black') as img:
-                bgimg = PIL.Image.open(bg["img"])
-                bg["x"] = round(bg["x"]-map["offsetX"])
-                bg["y"] = round(bg["y"]-map["offsetY"])
-                if bgimg.width != bg["width"] or bgimg.height != bg["height"]:
-                    bgimg = bgimg.resize((bg["width"],bg["height"]))
-                if bg["scale"] != 1:
-                    bgimg = bgimg.resize((round(bgimg.width*bg["scale"]),round(bgimg.height*bg["scale"])))
-                if bg["x"] > 0 and (bgimg.width + bg["x"]) > img.width:
-                    bgimg = bgimg.crop((0,0,bgimg.width-bg["x"],bgimg.height))
-                elif bg["x"] < 0:
-                    bgimg = bgimg.crop((bg["x"]*-1,0,bgimg.width+bg["x"],bgimg.height))
-                    bg["x"] = 0
-                if bg["y"] > 0 and (bgimg.width + bg["y"]) > img.width:
-                    bgimg = bgimg.crop((0,0,bgimg.width, bgimg.height-bg["y"]))
-                elif bg["y"] < 0:
-                    bgimg = bgimg.crop((0,bg["y"]*-1,bgimg.width,bgimg.height+bg["y"]))
-                    bg["y"] = 0
-                img.paste(bgimg,(bg["x"],bg["y"]))
+        if not map["img"]:
+            with PIL.Image.new('RGB', (map["width"], map["height"]), color = 'gray') as img:
+                if map["tiles"][0]["width"] >= (map["width"]*.9) and map["tiles"][0]["height"] >= (map["height"]*.9):
+                    bg = map["tiles"].pop(0)
+                    bg["img"] = urllib.parse.unquote(bg["img"])
+                    imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
+                    bgimg = PIL.Image.open(bg["img"])
+                    bg["x"] = round(bg["x"]-map["offsetX"])
+                    bg["y"] = round(bg["y"]-map["offsetY"])
+                    if bgimg.width != bg["width"] or bgimg.height != bg["height"]:
+                        bgimg = bgimg.resize((bg["width"],bg["height"]))
+                    if bg["scale"] != 1:
+                        bgimg = bgimg.resize((round(bgimg.width*bg["scale"]),round(bgimg.height*bg["scale"])))
+                    if bg["x"] > 0 and (bgimg.width + bg["x"]) > img.width:
+                        bgimg = bgimg.crop((0,0,bgimg.width-bg["x"],bgimg.height))
+                    elif bg["x"] < 0:
+                        bgimg = bgimg.crop((bg["x"]*-1,0,bgimg.width+bg["x"],bgimg.height))
+                        bg["x"] = 0
+                    if bg["y"] > 0 and (bgimg.width + bg["y"]) > img.width:
+                        bgimg = bgimg.crop((0,0,bgimg.width, bgimg.height-bg["y"]))
+                    elif bg["y"] < 0:
+                        bgimg = bgimg.crop((0,bg["y"]*-1,bgimg.width,bgimg.height+bg["y"]))
+                        bg["y"] = 0
+                    img.paste(bgimg,(bg["x"],bg["y"]))
                 if args.jpeg == ".webp":
                     img.save(os.path.join(tempdir,mapslug+"_bg.webp"))
                     map["img"] = mapslug+"_bg.webp"
@@ -1567,6 +1568,17 @@ def convert(args=args,worker=None):
                     ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']+", "+d['attributes']['speed']['special']
                 else:
                     ET.SubElement(monster,'speed').text = d['attributes']['speed']['value']
+            elif 'movement' in d['attributes']:
+                speed = []
+                m = d['attributes']['movement']
+                for k,v in m.items():
+                    if not m[k]:
+                        continue
+                    if k == "walk":
+                        speed.insert(0,"{} {}".format(m[k],m['units']))
+                    elif k != "units":
+                        speed.append("{} {} {}".format(k, m[k],m['units']))
+                ET.SubElement(monster,'speed').text = ", ".join(speed)
             ET.SubElement(monster,'str').text = str(d['abilities']['str']['value'])
             ET.SubElement(monster,'dex').text = str(d['abilities']['dex']['value'])
             ET.SubElement(monster,'con').text = str(d['abilities']['con']['value'])
