@@ -115,8 +115,18 @@ parserg.add_argument(
     default=False,
     const=True,
     help="use graphical interface")
+parser.add_argument(
+    '--cover',
+    dest="covername",
+    action='store',
+    default=None,
+    help="use scene name for cover image")
 args = parser.parse_args()
-if args.noconv and args.jpeg == ".jpg":
+if args.covername:
+    args.covernames = [ args.covername.lower() ]
+else:
+    args.covernames = ["intro","start","start here","title page","title","landing","landing page"]
+if args.noconv and args.jpeg == ".png":
     args.jpeg = ".webp"
 if not args.srcfile and not args.gui:
     if sys.platform in ['darwin','win32']:
@@ -178,11 +188,12 @@ def convert(args=args,worker=None):
         else:
             map["offsetX"] = (map["width"] + math.ceil(0.5 * map["width"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["width"]) * 0.5
             map["offsetY"] = (map["height"] + math.ceil(0.5 * map["height"] / (map["grid"] * 2)) * (map["grid"] * 2) - map["height"]) * 0.5
-
+        map["offsetX"] -= map["shiftX"]
+        map["offsetY"] -= map["shiftY"]
         mapbaseslug = slugify(map['name'])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
         slugs.append(mapslug)
-        if not map["img"] and map["tiles"][0]["width"] >= map["width"] and map["tiles"][0]["height"] >= map["height"]:
+        if not map["img"] and map["tiles"][0]["width"] >= (map["width"]*.9) and map["tiles"][0]["height"] >= (map["height"]*.9):
             bg = map["tiles"].pop(0)
             bg["img"] = urllib.parse.unquote(bg["img"])
             imgext = os.path.splitext(os.path.basename(urllib.parse.urlparse(bg["img"]).path))[1]
@@ -190,6 +201,8 @@ def convert(args=args,worker=None):
                 bgimg = PIL.Image.open(bg["img"])
                 bg["x"] = round(bg["x"]-map["offsetX"])
                 bg["y"] = round(bg["y"]-map["offsetY"])
+                if bgimg.width != bg["width"] or bgimg.height != bg["height"]:
+                    bgimg = bgimg.resize((bg["width"],bg["height"]))
                 if bg["scale"] != 1:
                     bgimg = bgimg.resize((round(bgimg.width*bg["scale"]),round(bgimg.height*bg["scale"])))
                 if bg["x"] > 0 and (bgimg.width + bg["x"]) > img.width:
@@ -228,7 +241,11 @@ def convert(args=args,worker=None):
             map["height"] *= round(map["rescale"])
 
 
-        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id'])),'parent': mapgroup,'sort': str(int(map["sort"]))})
+        mapentry = ET.SubElement(module,'map',{'id': str(uuid.uuid5(moduuid,map['_id'])),'sort': str(int(map["sort"]))})
+        if mapgroup:
+            mapentry.set('parent',mapgroup)
+        elif 'folder' in map and map['folder']:
+            mapentry.set('parent',str(uuid.uuid5(moduuid,map['folder'])))
         ET.SubElement(mapentry,'name').text = map['name']
         ET.SubElement(mapentry,'slug').text = mapslug
         if map["img"] and os.path.exists(urllib.parse.unquote(map["img"])):
@@ -290,15 +307,16 @@ def convert(args=args,worker=None):
                         newh = img.height if img.height <= 8192 else 8192
                         neww = round(newh*(map["width"]/map["height"]))
                     if newh != img.height or neww != img.width:
-                        print("Resizing {}x{} to {}x{} ({})".format(img.width,img.height,neww,newh,(map["width"]/map["height"])))
+                        print(map["name"],"Resizing {}x{} to {}x{} ({})".format(img.width,img.height,neww,newh,(map["width"]/map["height"])))
                         img = img.resize((neww,newh))
                         img.save(os.path.join(tempdir,map["img"]))
                 if img.width > 8192 or img.height > 8192:
                     scale = 8192/img.width if img.width>=img.height else 8192/img.height
+                    print("Rescaling {}x{} ".format(img.width,img.height),end='')
                     if args.gui:
                         worker.outputLog(" - Resizing map from {}x{} to {}x{}".format(img.width,img.height,round(img.width*scale),round(img.height*scale)))
                     img = img.resize((round(img.width*scale),round(img.height*scale)))
-                    print("Resized to {}x{}".format(img.width,img.height))
+                    print("to {}x{}".format(img.width,img.height))
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if args.gui:
                             worker.outputLog(" - Converting map from .webp to " + args.jpeg)
@@ -313,7 +331,7 @@ def convert(args=args,worker=None):
                         os.remove(map["img"])
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
-                    if map["scale"] > 1:
+                    if map["scale"] > 1.25:
                         map["scale"] = 1.0
                         map["rescale"] = img.width/map["width"] if img.width/map["width"] >= img.height/map["height"] else img.height/map["height"]
                 else:
@@ -330,7 +348,7 @@ def convert(args=args,worker=None):
                 img.save(os.path.join(tempdir,mapslug+"_bg.png"))
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = map["width"]/img.width if map["width"]/img.width >= map["height"]/img.height else map["height"]/img.height
-                    if map["scale"] > 1:
+                    if map["scale"] > 1.25:
                         map["scale"] = 1.0
                         map["rescale"] = img.width/map["width"] if img.width/map["width"] >= img.height/map["height"] else img.height/map["height"]
                 else:
@@ -345,7 +363,6 @@ def convert(args=args,worker=None):
                     os.remove(map["thumb"])
                 else:
                     ET.SubElement(mapentry,'snapshot').text = map["thumb"]
-
         map["grid"] *= map["rescale"]
         map['shiftX'] *= map["rescale"]
         map['shiftY'] *= map["rescale"]
@@ -363,8 +380,11 @@ def convert(args=args,worker=None):
                 else:
                     map['shiftY'] -= map["grid"]/2.0
             elif 4 <= map["gridType"] <= 5:
-                if map["gridType"] == 5:
+                map['shiftY'] += map["grid"]/2.0
+                if map["gridType"] == 4:
                     map['shiftX'] -= map["grid"]
+                else:
+                    map['shiftX'] += map["grid"]/2.0
             map['shiftX'] *= map["realign"]
             map['shiftY'] *= map["realign"]
         map["rescale"] *= map["realign"]
@@ -564,6 +584,13 @@ def convert(args=args,worker=None):
                         print(" - MISSING RESOURCE:",image["img"],file=sys.stderr,end='')
                         continue
                 img = PIL.Image.open(image["img"])
+                if img.width <= 300 and img.height <= 300 and .9 <= img.width/img.height <= 1.1:
+                    if 'journal' in map and map['journal']:
+                        try:
+                            from markerocr import placeMarker
+                            placeMarker(img,map,image,mapentry,module,moduuid)
+                        except:
+                            pass
                 if imgext == ".webp" and args.jpeg != ".webp":
                     ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+".png"
                     if img.width > 4096 or img.height > 4096:
@@ -669,24 +696,36 @@ def convert(args=args,worker=None):
             for d in map['drawings']:
                 if d['type'] == 't':
                     with PIL.Image.new('RGBA', (round(d["width"]), round(d["height"])), color = (0,0,0,0)) as img:
+                        d['fontSize'] = round(d['fontSize']/.75)
                         try:
                             font = PIL.ImageFont.truetype(os.path.join(moduletmp,mod["name"],"fonts",d['fontFamily'] + ".ttf"), size=d['fontSize'])
                         except Exception:
                             try:
                                 font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
-                            except Exception:
+                            except Exception as e:
                                 try:
-                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/METADATA.pb".format(d['fontFamily'].lower()),d['fontFamily'] + ".pb")
-                                    protobuf_file_path = d['fontFamily'] + ".pb"
-                                    protobuf_file = open(protobuf_file_path, 'r')
-                                    protobuf = protobuf_file.read()
-                                    font_family = fonts_public_pb2.FamilyProto()
-                                    text_format.Merge(protobuf, font_family)
-                                    urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/{}".format(d['fontFamily'].lower(),font_family.fonts[0].filename),d['fontFamily'] + ".ttf")
-                                    font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
+                                    solbera = {
+                                            "bookmania": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Bookinsanity/Bookinsanity.otf",
+                                            "scala sans caps": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Scaly%20Sans%20Caps/Scaly%20Sans%20Caps.otf",
+                                            "modesto condensed": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Nodesto%20Caps%20Condensed/Nodesto%20Caps%20Condensed.otf",
+                                            "mrs eaves small caps": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Mr%20Eaves/Mr%20Eaves%20Small%20Caps.otf",
+                                            "dai vernon misdirect": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Zatanna%20Misdirection/Zatanna%20Misdirection.otf",
+                                            "scala sans": "https://raw.githubusercontent.com/jonathonf/solbera-dnd-fonts/master/Scaly%20Sans/Scaly%20Sans.otf"
+                                            }
+                                    if d['fontFamily'].lower() in solbera.keys():
+                                        urllib.request.urlretrieve(solbera[d['fontFamily'].lower()],d['fontFamily']+".otf")
+                                        font = PIL.ImageFont.truetype(d['fontFamily'] + ".otf", size=d['fontSize'])
+                                    else:
+                                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/METADATA.pb".format(urllib.parse.quote(d['fontFamily'].lower())),d['fontFamily'] + ".pb")
+                                        protobuf_file_path = d['fontFamily'] + ".pb"
+                                        protobuf_file = open(protobuf_file_path, 'r')
+                                        protobuf = protobuf_file.read()
+                                        font_family = fonts_public_pb2.FamilyProto()
+                                        text_format.Merge(protobuf, font_family)
+                                        urllib.request.urlretrieve("https://raw.githubusercontent.com/google/fonts/master/ofl/{}/{}".format(urllib.parse.quote(d['fontFamily'].lower()),font_family.fonts[0].filename),d['fontFamily'] + ".ttf")
+                                        font = PIL.ImageFont.truetype(d['fontFamily'] + ".ttf", size=d['fontSize'])
                                 except Exception as e:
-                                    print(e)
-                                    print("\rUnable to load font for \"{}\"".format(d['fontFamily']),file=sys.stderr,end='')
+                                    print("\rUnable to load font for \"{}\"".format(d['fontFamily']),e,file=sys.stderr,end='\n')
                                     font = PIL.ImageFont.load_default()
                         text = d['text']
                         draw = PIL.ImageDraw.Draw(img)
@@ -729,18 +768,26 @@ def convert(args=args,worker=None):
                         points.append(str((p[0]-map["offsetX"]+d["x"])*map["rescale"]))
                         points.append(str((p[1]-map["offsetY"]+d["y"])*map["rescale"]))
                     ET.SubElement(drawing,'data').text = ",".join(points)
-
+        if 'journal' in map and map['journal']:
+                marker = ET.SubElement(mapentry,'marker')
+                ET.SubElement(marker,'name').text = ""
+                ET.SubElement(marker,'label').text = "📖"
+                ET.SubElement(marker,'shape').text = "circle"
+                ET.SubElement(marker,'x').text = str(round(map["grid"]))
+                ET.SubElement(marker,'y').text = str(round(map["grid"]))
+                ET.SubElement(marker,'hidden').text = 'YES'
+                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,map['journal']))) })
         if 'sounds' in map and len(map['sounds']) > 0:
             for s in map['sounds']:
                 marker = ET.SubElement(mapentry,'marker')
                 ET.SubElement(marker,'name').text = ""#"Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
                 ET.SubElement(marker,'label').text = "🔊"
-                ET.SubElement(marker,'type').text = "circle"
+                ET.SubElement(marker,'shape').text = "circle"
                 ET.SubElement(marker,'x').text = str(round((s['x']-map["offsetX"])*map["rescale"]))
                 ET.SubElement(marker,'y').text = str(round((s['y']-map["offsetY"])*map["rescale"]))
                 ET.SubElement(marker,'hidden').text = 'YES'
-                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,map['_id']+map['name']+s['_id']))) })
-                page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,map['_id']+map['name']+s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id']+map['name'])) } )
+                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,map['_id']+s['_id']))) })
+                page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,map['_id']+s['_id'])), 'parent': str(uuid.uuid5(moduuid,map['_id'])) } )
                 ET.SubElement(page,'name').text = map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0]
                 ET.SubElement(page,'slug').text = slugify(map["name"] + " Sound: " + os.path.splitext(os.path.basename(s["path"]))[0])
                 content = ET.SubElement(page,'content')
@@ -1101,7 +1148,7 @@ def convert(args=args,worker=None):
             maxorder = j['sort']
         sort += 1
     sort = 0
-    for m in maps:
+    for m in sorted(maps,key=lambda m:m['name']):
         m['sort'] = sort if 'sort' not in m or m['sort'] == None else m['sort']
         if m['sort'] and m['sort'] > maxorder:
             maxorder = m['sort']
@@ -1118,7 +1165,7 @@ def convert(args=args,worker=None):
         folder = ET.SubElement(module,'group', { 'id': str(uuid.uuid5(moduuid,f['_id'])), 'sort': str(int(f['sort'])) } )
         ET.SubElement(folder,'name').text = f['name']
         if f['parent'] != None:
-            folder.set('parent',f['parent'])
+            folder.set('parent',str(uuid.uuid5(moduuid,f['parent'])))
     order = 0
     if len(journal)>0 and args.gui:
         worker.outputLog("Converting journal")
@@ -1274,21 +1321,31 @@ def convert(args=args,worker=None):
             content.text += '</tr>'
         content.text += "</tbody></table>"
         content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
-
+    if 'media' in mod:
+        for media in mod['media']:
+            if media['type'] == 'cover':
+                def progress(block_num, block_size, total_size):
+                    pct = 100.00*((block_num * block_size)/total_size)
+                    print("\rDownloading cover {:.2f}%".format(pct),file=sys.stderr,end='')
+                urllib.request.urlretrieve(media['url'],os.path.join(tempdir,os.path.basename(media['url'])),progress)
+                modimage.text = os.path.basename(media['url'])
     mapcount = 0
     if len(maps) > 0:
         if args.gui:
             worker.outputLog("Converting maps")
-        mapsbaseslug = 'maps'
-        mapsslug = mapsbaseslug + str(len([i for i in slugs if mapsbaseslug in i]))
-        mapgroup = str(uuid.uuid5(moduuid,mapsslug))
-        group = ET.SubElement(module, 'group', {'id': mapgroup, 'sort': str(int(maxorder+2))})
-        ET.SubElement(group, 'name').text = "Maps"
-        ET.SubElement(group, 'slug').text = mapsslug
+        if any([journal,folders,tables,playlists]) and not any([x['folder'] for x in maps if 'folder' in x]):
+            mapsbaseslug = 'maps'
+            mapsslug = mapsbaseslug + str(len([i for i in slugs if mapsbaseslug in i]))
+            mapgroup = str(uuid.uuid5(moduuid,mapsslug))
+            group = ET.SubElement(module, 'group', {'id': mapgroup, 'sort': str(int(maxorder+2))})
+            ET.SubElement(group, 'name').text = "Maps"
+            ET.SubElement(group, 'slug').text = mapsslug
+        else:
+            mapgroup = None
         for map in maps:
             if '$$deleted' in map and map['$$deleted']:
                 continue
-            if not modimage.text and map["name"].lower() in ["intro","start","start here","title page","title","landing","landing page"]:
+            if not modimage.text and map["name"].lower() in args.covernames:
                 if args.gui:
                     worker.outputLog("Generating cover image")
                 print("\rGenerating cover image",file=sys.stderr,end='')
