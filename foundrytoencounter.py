@@ -625,10 +625,9 @@ def convert(args=args,worker=None):
 
                 #asset = ET.SubElement(tile,'asset', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)))})
                 #ET.SubElement(asset,'name').text = "Light {}".format(i+1)
-
                 lightel = ET.SubElement(mapentry,'light', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)+"light"))})
-                ET.SubElement(lightel,'radiusMax').text = str(round(light["dim"]))
-                ET.SubElement(lightel,'radiusMin').text = str(round(light["bright"]))
+                ET.SubElement(lightel,'radiusMax').text = str(round(light["dim"])) if light["dim"] else "0"
+                ET.SubElement(lightel,'radiusMin').text = str(round(light["bright"])) if light["bright"] else "0"
                 ET.SubElement(lightel,'color').text = light["tintColor"] if "tintColor" in light and light["tintColor"] else "#ffffff"
                 ET.SubElement(lightel,'opacity').text = str(light["tintAlpha"])
                 ET.SubElement(lightel,'alwaysVisible').text = "YES" if light["t"] == "u" else "NO"
@@ -1176,6 +1175,8 @@ def convert(args=args,worker=None):
             worker.updateProgress(5+(order/len(journal))*10)
         if '$$deleted' in j and j['$$deleted']:
             continue
+        if not j['content'] and ('img' not in j or not j['img']):
+            continue
         print("\rConverting journal [{}/{}] {:.0f}%".format(order,len(journal),order/len(journal)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,j['_id'])), 'sort': str(j['sort'] or order) } )
         if 'folder' in j and j['folder'] != None:
@@ -1285,6 +1286,8 @@ def convert(args=args,worker=None):
             continue
         print("\rConverting tables [{}/{}] {:.0f}%".format(order,len(tables),order/len(tables)*100),file=sys.stderr,end='')
         page = ET.SubElement(module,'page', { 'id': str(uuid.uuid5(moduuid,t['_id'])), 'parent': tablesgroup, 'sort': str(t['sort'] if 'sort' in t and t['sort'] else order) } )
+        if 'folder' in t and t['folder']:
+            page.set('parent',str(uuid.uuid5(moduuid,t['folder'])))
         ET.SubElement(page,'name').text = t['name']
         ET.SubElement(page,'slug').text = slugify(t['name'])
         content = ET.SubElement(page,'content')
@@ -1324,7 +1327,7 @@ def convert(args=args,worker=None):
         content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
     if 'media' in mod:
         for media in mod['media']:
-            if media['type'] == 'cover':
+            if media['type'] == 'cover' and media["url"]:
                 def progress(block_num, block_size, total_size):
                     pct = 100.00*((block_num * block_size)/total_size)
                     print("\rDownloading cover {:.2f}%".format(pct),file=sys.stderr,end='')
@@ -1371,6 +1374,23 @@ def convert(args=args,worker=None):
                 worker.updateProgress(35+(mapcount/len(maps))*35)
             print("\rConverting maps [{}/{}] {:.0f}%".format(mapcount,len(maps),mapcount/len(maps)*100),file=sys.stderr,end='')
             createMap(map,mapgroup)
+    while True:
+        removed = False
+        for g in module.iter('group'):
+            gInUse = False
+            for tag in ['page','map','group']:
+                for p in module.iter(tag):
+                    if p.get('parent') == g.get('id'):
+                        gInUse = True
+                        break
+                if gInUse:
+                    break
+            if gInUse:
+                continue
+            module.remove(g)
+            removed = True
+        if not removed:
+            break
     if not modimage.text and len(maps) > 0:
         randomok = False
         while not randomok:
