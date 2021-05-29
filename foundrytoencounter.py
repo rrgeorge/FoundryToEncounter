@@ -398,8 +398,8 @@ def convert(args=args,worker=None):
         ET.SubElement(mapentry,'gridOffsetX').text = str(round(map['shiftX']))
         ET.SubElement(mapentry,'gridOffsetY').text = str(round(map['shiftY']))
         ET.SubElement(mapentry,'gridType').text = "hexFlat" if 4 <= map["gridType"] <= 5 else "hexPointy" if 2 <= map["gridType"] <= 3 else "square"
+        ET.SubElement(mapentry,'lineOfSight').text = "YES" if map["tokenVision"] else "NO"
         if "walls" in map and len(map["walls"])>0:
-            ET.SubElement(mapentry,'lineOfSight').text = "YES"
             for i in range(len(map["walls"])):
                 p = map["walls"][i]
                 print("\rwall {}".format(i),file=sys.stderr,end='')
@@ -1005,11 +1005,39 @@ def convert(args=args,worker=None):
             if groupname != '.':
                 if args.gui:
                     worker.outputLog("Creating group "+groupname.title())
-                sort += 1
-                groupid = str(uuid.uuid5(moduuid,slugify(os.path.relpath(root, start=args.packdir))))
-                group = ET.SubElement(module, 'group', {'id': groupid, 'sort': str(int(sort))})
-                ET.SubElement(group, 'name').text = groupname.title()
-                ET.SubElement(group, 'slug').text = slugify(groupname)
+                splitpath = []
+                path = groupname
+                while True:
+                    parts = os.path.split(path)
+                    if parts[0] == path:
+                        splitpath.insert(0,parts[0])
+                        break
+                    elif parts[1] == path:
+                        splitpath.insert(0,parts[1])
+                        break
+                    else:
+                        path = parts[0]
+                        splitpath.insert(0,parts[1])
+                parent = None
+                dirid = None
+                for i,subdir in enumerate(splitpath):
+                    if not subdir:
+                        continue
+                    if dirid:
+                        parent = dirid
+                    dirid = str(uuid.uuid5(moduuid,slugify('/'.join(splitpath[:i+1]))))
+                    gInUse = False
+                    for g in module.iter('group'):
+                        if dirid == g.get('id'):
+                            gInUse = True
+                    if not gInUse:
+                        sort += 1
+                        group = ET.SubElement(module, 'group', {'id': dirid, 'sort': str(int(sort))})
+                        if parent:
+                            group.set('parent',parent)
+                        ET.SubElement(group, 'name').text = subdir.title()
+                        ET.SubElement(group, 'slug').text = slugify(subdir)
+                groupid = str(uuid.uuid5(moduuid,slugify(groupname)))
             else:
                 groupid = None
             for f in files:
@@ -1031,6 +1059,16 @@ def convert(args=args,worker=None):
                 else:
                     asset = ET.SubElement(module,'asset', { 'id': str(uuid.uuid5(moduuid,os.path.relpath(image, start=tempdir))) })
                 ET.SubElement(asset,'name').text = os.path.splitext(os.path.basename(image))[0]
+                size = re.search(r'[0-9]+[xX][0-9]',os.path.splitext(os.path.basename(image))[0])
+                if size:
+                    ET.SubElement(asset,'size').text = size.group(0)
+                tags = re.search(r'(.*)_(?:tiny|small|medium|large|huge)(?:plus)?_.*',os.path.splitext(os.path.basename(image))[0],re.I)
+                if tags:
+                    ET.SubElement(asset,'tags').text = tags.group(1).replace('_',' ')
+                else:
+                    tags = re.search(r'((.*?)(?:[0-9]+)|(.*))',os.path.splitext(os.path.basename(image))[0],re.I)
+                    if tags:
+                        ET.SubElement(asset,'tags').text = tags.group(3) or tags.group(2)
                 imgext = os.path.splitext(os.path.basename(image))[1]
                 if imgext == ".webm":
                     try:
@@ -1105,9 +1143,11 @@ def convert(args=args,worker=None):
                             worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image)
                         print(" - webm tiles are not supported, consider converting to a spritesheet:",image,file=sys.stderr,end='')
                     continue
-                else:
-                    ET.SubElement(asset,'type').text = "image"
                 with PIL.Image.open(image) as img:
+                    if getattr(img, "is_animated", False):
+                        ET.SubElement(asset,'type').text = "animatedImage"
+                    else:
+                        ET.SubElement(asset,'type').text = "image"
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if img.width > 4096 or img.height > 4096:
                             scale = 4095/img.width if img.width>=img.height else 4095/img.height
@@ -1378,7 +1418,7 @@ def convert(args=args,worker=None):
         removed = False
         for g in module.iter('group'):
             gInUse = False
-            for tag in ['page','map','group']:
+            for tag in ['page','map','group','asset']:
                 for p in module.iter(tag):
                     if p.get('parent') == g.get('id'):
                         gInUse = True
