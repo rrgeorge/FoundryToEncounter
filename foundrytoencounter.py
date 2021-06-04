@@ -24,6 +24,8 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
+VERSION = "1.10.0"
+
 zipfile.ZIP64_LIMIT = 4294967294
 
 try:
@@ -92,8 +94,8 @@ parser.add_argument(
     dest="jpeg",
     action='store_const',
     const=".jpg",
-    default=".png",
-    help="convert WebP to JPG instead of PNG")
+    default=".webp",
+    help="convert WebP Maps to JPG, WebP tiles to PNG")
 parser.add_argument(
     '-nc',
     dest="noconv",
@@ -511,64 +513,45 @@ def convert(args=args,worker=None):
                     try:
                         if os.path.exists(image["img"]):
                             if args.gui:
-                                worker.outputLog(" - Converting webm tile to spritesheet")
+                                worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image["img"])
+                            duration = probe["duration"]
                             if probe['codec_name'] != 'vp9':
-                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',image["img"],os.path.splitext(image["img"])[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image["img"],'-loop','0',os.path.splitext(image["img"])[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
-                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-i',image["img"],os.path.splitext(image["img"])[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-                            ffp.wait()
-                            duration = probe['duration']
-                            framewidth = probe['width']
-                            frameheight = probe['height']
-                            frames = []
-                            for afile in os.listdir(os.path.dirname(image["img"])):
-                                if re.match(re.escape(os.path.splitext(os.path.basename(image["img"]))[0])+"-frame[0-9]{5}\.png",afile):
-                                    frames.append(os.path.join(os.path.dirname(image["img"]),afile))
-                            def getGrid(n):
-                                i = 1
-                                factors = []
-                                while(i < n+1):
-                                    if n % i == 0:
-                                        factors.append(i)
-                                    i += 1
-                                gw = factors[len(factors)//2]
-                                gh = factors[(len(factors)//2)-1]
-                                if gw*framewidth > 4096 or gh*frameheight > 4096:
-                                    return (gh,gw)
-                                else:
-                                    return (gw,gh)
-                            (gw,gh) = getGrid(len(frames))
-                            with PIL.Image.new('RGBA', (round(framewidth*gw), round(frameheight*gh)), color = (0,0,0,0)) as img:
-                                px = 0
-                                py = 0
-                                for i in range(len(frames)):
-                                    img.paste(PIL.Image.open(frames[i]),(framewidth*px,frameheight*py))
-                                    os.remove(frames[i])
-                                    px += 1
-                                    if px == gw:
-                                        px = 0
-                                        py += 1
-                                if img.width > 4096 or img.height > 4096:
-                                    scale = 4095/img.width if img.width>=img.height else 4095/img.height
-                                    img = img.resize((round(img.width*scale),round(img.height*scale)))
-                                    framewidth = round(framewidth*scale)
-                                    frameheight = round(frameheight*scale)
-                                img.save(os.path.splitext(image["img"])[0]+"-sprite.png")
-                            os.remove(image["img"])
-                        if os.path.exists(os.path.splitext(image["img"])[0]+"-sprite.png"):
-                            ET.SubElement(asset,'type').text = "spriteSheet"
-                            ET.SubElement(asset,'frameWidth').text = str(framewidth)
-                            ET.SubElement(asset,'frameHeight').text = str(frameheight)
-                            ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+"-sprite.png"
-                            ET.SubElement(asset,'duration').text = str(duration)
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-progress','ffmpeg.log','-i',image["img"],'-loop','0',os.path.splitext(image["img"])[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+
+                            with open('ffmpeg.log','a+') as f:
+                                logged = False
+                                while ffp.poll() is None:
+                                    l = f.readline()
+                                    m = re.match(r'(.*?)=(.*)',l)
+                                    if m:
+                                        key = m.group(1)
+                                        val = m.group(2)
+                                        if key == "out_time_us":
+                                            if not logged:
+                                                print(" webm->webp:    ",file=sys.stderr,end='')
+                                                logged = True
+                                            elif pct >= 100:
+                                                print("\b",file=sys.stderr,end='')
+                                            pos = round(float(val)/10000,2)
+                                            pct = round(pos/duration)
+                                            print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
+                                            if args.gui:
+                                                worker.updateProgress(pct)
+                                            sys.stderr.flush()
+                            os.remove('ffmpeg.log')
+                        if os.path.exists(os.path.splitext(image["img"])[0]+".webp"):
+                            ET.SubElement(asset,'type').text = "animatedImage"
+                            ET.SubElement(asset,'resource').text = os.path.splitext(image["img"])[0]+".webp"
                         continue
                     except Exception:
                         import traceback
                         print(traceback.format_exc())
                         if args.gui:
-                            worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image["img"])
-                        print(" - webm tiles are not supported, consider converting to a spritesheet:",image["img"],file=sys.stderr,end='')
+                            worker.outputLog(" - webm tiles are not supported, consider converting to an animated image or spritesheet: "+image["img"])
+                        print(" - webm tiles are not supported, consider converting to an animated image or a spritesheet:",image["img"],file=sys.stderr,end='')
                     continue
                 else:
                     ET.SubElement(asset,'type').text = "image"
@@ -1064,75 +1047,57 @@ def convert(args=args,worker=None):
                     ET.SubElement(asset,'size').text = size.group(0)
                 tags = re.search(r'(.*)_(?:tiny|small|medium|large|huge)(?:plus)?_.*',os.path.splitext(os.path.basename(image))[0],re.I)
                 if tags:
-                    ET.SubElement(asset,'tags').text = tags.group(1).replace('_',' ')
+                    ET.SubElement(asset,'tags').text = tags.group(1).replace('_',' ').strip()
                 else:
-                    tags = re.search(r'((.*?)(?:[0-9]+)|(.*))',os.path.splitext(os.path.basename(image))[0],re.I)
+                    tags = re.search(r'(?:VAM)?((.*?)(?:[0-9]+)|(.*))',os.path.splitext(os.path.basename(image))[0],re.I)
                     if tags:
-                        ET.SubElement(asset,'tags').text = tags.group(3) or tags.group(2)
+                        tag = tags.group(3) or tags.group(2)
+                        ET.SubElement(asset,'tags').text = tag.replace('_',' ').strip()
                 imgext = os.path.splitext(os.path.basename(image))[1]
                 if imgext == ".webm":
                     try:
                         if os.path.exists(image):
                             if args.gui:
-                                worker.outputLog(" - Converting webm tile to spritesheet")
+                                worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image)
+                            duration = probe["duration"]
                             if probe['codec_name'] != 'vp9':
-                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',image,os.path.splitext(image)[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image,'-loop','0',os.path.splitext(image)[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
-                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-i',image,os.path.splitext(image)[0]+"-frame%05d.png"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-                            ffp.wait()
-                            duration = probe['duration']
-                            framewidth = probe['width']
-                            frameheight = probe['height']
-                            frames = []
-                            for afile in os.listdir(os.path.dirname(image)):
-                                if re.match(re.escape(os.path.splitext(os.path.basename(image))[0])+"-frame[0-9]{5}\.png",afile):
-                                    frames.append(os.path.join(os.path.dirname(image),afile))
-                            def getGrid(n):
-                                i = 1
-                                factors = []
-                                while(i < n+1):
-                                    if n % i == 0:
-                                        factors.append(i)
-                                    i += 1
-                                gw = factors[len(factors)//2]
-                                gh = factors[(len(factors)//2)-1]
-                                if gw*framewidth > 4096 or gh*frameheight > 4096:
-                                    return (gh,gw)
-                                else:
-                                    return (gw,gh)
-                            (gw,gh) = getGrid(len(frames))
-                            with PIL.Image.new('RGBA', (round(framewidth*gw), round(frameheight*gh)), color = (0,0,0,0)) as img:
-                                px = 0
-                                py = 0
-                                for i in range(len(frames)):
-                                    img.paste(PIL.Image.open(frames[i]),(framewidth*px,frameheight*py))
-                                    os.remove(frames[i])
-                                    px += 1
-                                    if px == gw:
-                                        px = 0
-                                        py += 1
-                                if img.width > 4096 or img.height > 4096:
-                                    scale = 4095/img.width if img.width>=img.height else 4095/img.height
-                                    img = img.resize((round(img.width*scale),round(img.height*scale)))
-                                    framewidth = round(framewidth*scale)
-                                    frameheight = round(frameheight*scale)
-                                img.save(os.path.splitext(image)[0]+"-sprite.png")
-                            os.remove(image)
-                        if os.path.exists(os.path.splitext(image)[0]+"-sprite.png"):
-                            ET.SubElement(asset,'type').text = "spriteSheet"
-                            ET.SubElement(asset,'frameWidth').text = str(framewidth)
-                            ET.SubElement(asset,'frameHeight').text = str(frameheight)
-                            ET.SubElement(asset,'duration').text = str(duration)
-                            image = os.path.splitext(os.path.basename(image, start=tempdir))[0]+"-sprite.png"
-                            if os.path.exists(os.path.join(packdir,os.path.basenamne(image))):
+                                ffp = subprocess.Popen([ffmpeg_path,'-v','error','-vcodec','libvpx-vp9','-progress','ffmpeg.log','-i',image,'-loop','0',os.path.splitext(image)[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+
+                            with open('ffmpeg.log','a+') as f:
+                                logged = False
+                                while ffp.poll() is None:
+                                    l = f.readline()
+                                    m = re.match(r'(.*?)=(.*)',l)
+                                    if m:
+                                        key = m.group(1)
+                                        val = m.group(2)
+                                        if key == "out_time_us":
+                                            if not logged:
+                                                print(" webm->webp:    ",file=sys.stderr,end='')
+                                                logged = True
+                                            elif pct >= 100:
+                                                print("\b",file=sys.stderr,end='')
+                                            pos = round(float(val)/10000,2)
+                                            pct = round(pos/duration)
+                                            print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
+                                            if args.gui:
+                                                worker.updateProgress(pct)
+                                            sys.stderr.flush()
+                            os.remove('ffmpeg.log')
+                        if os.path.exists(os.path.splitext(image)[0]+".webp"):
+                            ET.SubElement(asset,'type').text = "animatedImage"
+                            image = os.path.splitext(image)[0]+".webp"
+                            if os.path.exists(os.path.join(packdir,os.path.basename(image).lower())):
                                 exist_count = 1
                                 image_name,image_ext = os.path.splitext(image)
-                                while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
+                                while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)).lower())):
                                     exist_count += 1
-                                newimage = "{}{}{}".format(image_name,exist_count,image_ext)
+                                newimage = "{}{}{}".format(image_name,exist_count,image_ext).lower()
                             else:
-                                newimage = image
+                                newimage = image.lower()
                             shutil.copy(image,os.path.join(packdir,os.path.basename(newimage)))
                             ET.SubElement(asset,'resource').text = os.path.basename(newimage)
                         continue
@@ -1140,8 +1105,8 @@ def convert(args=args,worker=None):
                         import traceback
                         print(traceback.format_exc())
                         if args.gui:
-                            worker.outputLog(" - webm tiles are not supported, consider converting to a spritesheet: "+image)
-                        print(" - webm tiles are not supported, consider converting to a spritesheet:",image,file=sys.stderr,end='')
+                            worker.outputLog(" - webm tiles are not supported, consider converting to an animated image or a spritesheet: "+image)
+                        print(" - webm tiles are not supported, consider converting to an animated image or a spritesheet:",image,file=sys.stderr,end='')
                     continue
                 with PIL.Image.open(image) as img:
                     if getattr(img, "is_animated", False):
@@ -1162,14 +1127,14 @@ def convert(args=args,worker=None):
                             scale = 4095/img.width if img.width>=img.height else 4095/img.height
                             img = img.resize((round(img.width*scale),round(img.height*scale)))
                             img.save(os.path.join(tempdir,image))
-                if os.path.exists(os.path.join(packdir,os.path.basename(image))):
+                if os.path.exists(os.path.join(packdir,os.path.basename(image).lower())):
                     exist_count = 1
                     image_name,image_ext = os.path.splitext(image)
-                    while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)))):
+                    while os.path.exists(os.path.join(packdir,os.path.basename("{}{}{}".format(image_name,exist_count,image_ext)).lower())):
                         exist_count += 1
-                    newimage = "{}{}{}".format(image_name,exist_count,image_ext)
+                    newimage = "{}{}{}".format(image_name,exist_count,image_ext).lower()
                 else:
-                    newimage = image
+                    newimage = image.lower()
                 shutil.copy(image,os.path.join(packdir,os.path.basename(newimage)))
                 ET.SubElement(asset,'resource').text = os.path.basename(newimage)
                 if not modimage.text and "preview" in f.lower():
@@ -1188,7 +1153,7 @@ def convert(args=args,worker=None):
             maxorder = j['sort']
         sort += 1
     sort = 0
-    for m in sorted(maps,key=lambda m:m['name']):
+    for m in sorted(maps,key=lambda m:m['name'] if 'name' in m else ""):
         m['sort'] = sort if 'sort' not in m or m['sort'] == None else m['sort']
         if m['sort'] and m['sort'] > maxorder:
             maxorder = m['sort']
@@ -1738,7 +1703,7 @@ def convert(args=args,worker=None):
                zipObj.write(filePath, filename if args.packdir else os.path.relpath(filePath,tempdir))
     sys.stderr.write("\033[K")
     print("\rDeleteing temporary files",file=sys.stderr,end='')
-    shutil.rmtree(tempdir)
+    #shutil.rmtree(tempdir)
     tempdir = None
     sys.stderr.write("\033[K")
     print("\rFinished creating module: {}".format(zipfilename),file=sys.stderr)
@@ -1749,8 +1714,8 @@ def convert(args=args,worker=None):
 if args.gui:
     import icon
     from PyQt5.QtGui import QIcon,QPixmap
-    from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject,Qt
-    from PyQt5.QtWidgets import *#QApplication,QFileDialog,QDialog,QProgressBar,QPushButton,QTextEdit,QLabel,QCheckBox,QMessageBox,QMenuBar,QAction
+    from PyQt5.QtCore import QObject,QThread,pyqtSignal,pyqtSlot,QRect,QCoreApplication,QMetaObject,Qt,QSettings
+    from PyQt5.QtWidgets import *
 
     class Worker(QThread):
         def __init__(self,parent = None):
@@ -1815,6 +1780,64 @@ if args.gui:
                 self.sendMessage("DONE")
             except Exception as e:
                 self.sendMessage("An error occurred downloading the manifest:" + str(e))
+
+    class Prefs(QDialog):
+        def __init__(self):
+            super(Prefs, self).__init__()
+            settings = QSettings()
+            self.settings = settings
+            self.ffmpeg_qpath = settings.value("ffmpeg_path",None,type=str)
+            self.ffprobe_qpath = settings.value("ffprobe_path",None,type=str)
+            self.setupUi(self)
+            self.show()
+
+        def setupUi(self, Dialog):
+            Dialog.setObjectName("Dialog")
+            Dialog.resize(400, 105)
+            Dialog.setFixedSize(400, 105)
+            self.ffmpeg_label = QLabel(Dialog)
+            self.ffmpeg_label.setGeometry(QRect(10,10,100,25))
+            self.ffmpeg_label.setText("FFmpeg binary:")
+            self.ffmpeg_text = QLineEdit(Dialog)
+            self.ffmpeg_text.setGeometry(QRect(110,10,180,25))
+            self.ffmpeg_text.setText(self.ffmpeg_qpath or ffmpeg_path)
+            self.ffmpeg_text.textChanged.connect(self.pathChange)
+            self.ffprobe_label = QLabel(Dialog)
+            self.ffprobe_label.setGeometry(QRect(10,40,100,25))
+            self.ffprobe_label.setText("FFprobe binary:")
+            self.ffprobe_text = QLineEdit(Dialog)
+            self.ffprobe_text.setGeometry(QRect(110,40,180,25))
+            self.ffprobe_text.setText(self.ffprobe_qpath or ffprobe_path)
+            self.ffprobe_text.textChanged.connect(self.pathChange)
+            self.browseButton1 = QPushButton(Dialog)
+            self.browseButton1.setGeometry(QRect(300,10,90,25))
+            self.browseButton1.setObjectName("browseButton1")
+            self.browseButton1.setText("Browse…")
+            self.browseButton1.clicked.connect(self.ffmpegBrowse)
+            self.browseButton2 = QPushButton(Dialog)
+            self.browseButton2.setGeometry(QRect(300,40,90,25))
+            self.browseButton2.setObjectName("browseButton2")
+            self.browseButton2.setText("Browse…")
+            self.browseButton2.clicked.connect(self.ffprobeBrowse)
+            self.buttonBox = QDialogButtonBox(Dialog)
+            self.buttonBox.setGeometry(QRect(10,70,390,25))
+            self.buttonBox.setOrientation(Qt.Horizontal)
+            self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+            self.buttonBox.accepted.connect(Dialog.accept)
+            self.buttonBox.rejected.connect(Dialog.reject)
+        def pathChange(self):
+            self.ffmpeg_qpath = self.ffmpeg_text.text()
+            self.ffprobe_qpath = self.ffprobe_text.text()
+        def ffmpegBrowse(self):
+            fileName = QFileDialog.getOpenFileName(self,"Select FFmpeg binary","","FFmpeg (ffmpeg;ffmpeg.exe)")
+            if fileName[0] and os.path.exists(fileName[0]):
+                self.ffmpeg_qpath = fileName[0]
+                self.ffmpeg_text.setText(self.ffmpeg_qpath)
+        def ffprobeBrowse(self):
+            fileName = QFileDialog.getOpenFileName(self,"Select FFprobe binary","","FFprobe (ffprobe;ffprobe.exe)")
+            if fileName[0] and os.path.exists(fileName[0]):
+                self.ffprobe_qpath = fileName[0]
+                self.ffprobe_text.setText(self.ffprobe_qpath)
 
     class GUI(QDialog):
         def setupUi(self, Dialog):
@@ -1886,10 +1909,15 @@ if args.gui:
             createPackAct.triggered.connect(self.selectPack)
             self.createPackAct = createPackAct
 
+            ffmpegAct = QAction('Set paths for FFmpeg…', self)
+            ffmpegAct.setStatusTip('Set paths for FFmpeg and FFprobe')
+            ffmpegAct.triggered.connect(self.setFFmpeg)
+
             fileMenu = menubar.addMenu('&File')
             fileMenu.addAction(openAct)
             fileMenu.addAction(openManifestAct)
             fileMenu.addAction(createPackAct)
+            fileMenu.addAction(ffmpegAct)
             fileMenu.addAction(exitAct)
 
             aboutAct = QAction('&About', self)
@@ -1924,7 +1952,8 @@ if args.gui:
             self.manifestWorker.progress.connect(self.updateProgress)
             self.manifestWorker.message.connect(self.manifestMessage)
             self.show()
-            self.openFile()
+            self.settings = QSettings()
+            #self.openFile()
 
         def clearFiles(self):
             self.foundryFile = None
@@ -1941,10 +1970,12 @@ if args.gui:
             self.output.clear()
 
         def openFile(self):
-            fileName = QFileDialog.getOpenFileName(self,"Open Foundry ZIP File","","Foundry Archive (*.zip)")
+            fileName = QFileDialog.getOpenFileName(self,"Open Foundry ZIP File",self.settings.value("last_path",None,type=str),"Foundry Archive (*.zip)")
             if not fileName[0] or not os.path.exists(fileName[0]):
                 self.clearFiles()
                 return
+            self.settings.setValue("last_path",os.path.split(fileName[0])[0])
+            self.settings.sync()
             with zipfile.ZipFile(fileName[0]) as z:
                 isworld = False
                 mod = None
@@ -2051,11 +2082,18 @@ if args.gui:
 
 
         def showAbout(self):
-            QMessageBox.about(self,"About FoundryToEncounter","This utility converts a Foundry world or module to an EncounterPlus module.")
+            QMessageBox.about(self,"About FoundryToEncounter "+VERSION,"This utility converts a Foundry world or module to an EncounterPlus module.")
         def outputLog(self,text):
             self.output.append(text)
         def updateProgress(self,pct):
             self.progress.setValue(pct)
+        def setFFmpeg(self):
+            prefs = Prefs()
+            if prefs.exec():
+                settings = QSettings()
+                settings.setValue("ffmpeg_path",prefs.ffmpeg_qpath)
+                settings.setValue("ffprobe_path",prefs.ffprobe_qpath)
+                settings.sync()
 
         def saveFile(self):
             if self.packdir:
@@ -2085,6 +2123,10 @@ if args.gui:
             self.worker.convert(args)
 
     app = QApplication([])
+    QCoreApplication.setApplicationName("FoundryToEncounter")
+    QCoreApplication.setOrganizationName("Robert George")
+    QCoreApplication.setOrganizationDomain("play5e.online")
+    QCoreApplication.setApplicationVersion(VERSION)
     if sys.platform != "linux":
         app.setWindowIcon(QIcon(':/Icon.png'))
     gui = GUI()
