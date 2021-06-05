@@ -259,7 +259,7 @@ def convert(args=args,worker=None):
                     if imgext == ".webm":
                         if args.gui:
                             worker.outputLog("Converting video map")
-                        duration = ffprobe(map["img"])["nb_read_frames"]
+                        duration = int(ffprobe(map["img"])["nb_read_frames"])
                         ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                         with open('ffmpeg.log','a+') as f:
                             logged = False
@@ -515,7 +515,7 @@ def convert(args=args,worker=None):
                             if args.gui:
                                 worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image["img"])
-                            duration = probe["nb_read_frames"]
+                            duration = int(probe["nb_read_frames"])
                             if probe['codec_name'] != 'vp9':
                                 ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image["img"],'-loop','0',os.path.splitext(image["img"])[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
@@ -1060,7 +1060,7 @@ def convert(args=args,worker=None):
                             if args.gui:
                                 worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image)
-                            duration = probe["nb_read_frames"]
+                            duration = int(probe["nb_read_frames"])
                             if probe['codec_name'] != 'vp9':
                                 ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image,'-loop','0',os.path.splitext(image)[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
@@ -2097,9 +2097,9 @@ if args.gui:
 
         def saveFile(self):
             if self.packdir:
-                fileName = QFileDialog.getSaveFileName(self,"Save Asset Pack",self.outputFile,"EncounterPlus Asset Pack (*.pack)")
+                fileName = QFileDialog.getSaveFileName(self,"Save Asset Pack",os.path.join(self.settings.value("last_path",None,type=str),self.outputFile),"EncounterPlus Asset Pack (*.pack)")
             else:
-                fileName = QFileDialog.getSaveFileName(self,"Save Converted Module",self.outputFile,"EncounterPlus Module (*.module)")
+                fileName = QFileDialog.getSaveFileName(self,"Save Converted Module",os.path.join(self.settings.value("last_path",None,type=str),self.outputFile),"EncounterPlus Module (*.module)")
             self.outputFile = fileName[0]
             if not fileName[0]:
                 return
