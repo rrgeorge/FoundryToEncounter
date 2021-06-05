@@ -53,7 +53,7 @@ if sys.platform == "win32":
 tempdir = None
 
 def ffprobe(video: str) -> dict:
-    process = subprocess.Popen([ffprobe_path,'-v','error','-show_entries','format=duration','-select_streams','v:0','-show_entries','stream=codec_name,height,width','-of','default=noprint_wrappers=1',video],startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+    process = subprocess.Popen([ffprobe_path,'-v','error','-count_frames','-show_entries','format=duration','-select_streams','v:0','-show_entries','stream=codec_name,height,width,nb_read_frames','-of','default=noprint_wrappers=1',video],startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
     probe = {}
     lines = process.stdout.readlines()
     for entry in lines:
@@ -259,7 +259,7 @@ def convert(args=args,worker=None):
                     if imgext == ".webm":
                         if args.gui:
                             worker.outputLog("Converting video map")
-                        duration = ffprobe(map["img"])["duration"]
+                        duration = ffprobe(map["img"])["nb_read_frames"]
                         ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                         with open('ffmpeg.log','a+') as f:
                             logged = False
@@ -275,7 +275,7 @@ def convert(args=args,worker=None):
                                             logged = True
                                         elif pct >= 100:
                                             print("\b",file=sys.stderr,end='')
-                                        pos = round(float(val)/10000,2)
+                                        pos = round(float(val)*100,2)
                                         pct = round(pos/duration)
                                         print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
                                         if args.gui:
@@ -515,7 +515,7 @@ def convert(args=args,worker=None):
                             if args.gui:
                                 worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image["img"])
-                            duration = probe["duration"]
+                            duration = probe["nb_read_frames"]
                             if probe['codec_name'] != 'vp9':
                                 ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image["img"],'-loop','0',os.path.splitext(image["img"])[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
@@ -535,7 +535,7 @@ def convert(args=args,worker=None):
                                                 logged = True
                                             elif pct >= 100:
                                                 print("\b",file=sys.stderr,end='')
-                                            pos = round(float(val)/10000,2)
+                                            pos = round(float(val)*100,2)
                                             pct = round(pos/duration)
                                             print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
                                             if args.gui:
@@ -1060,7 +1060,7 @@ def convert(args=args,worker=None):
                             if args.gui:
                                 worker.outputLog(" - Converting webm tile to animated webp")
                             probe = ffprobe(image)
-                            duration = probe["duration"]
+                            duration = probe["nb_read_frames"]
                             if probe['codec_name'] != 'vp9':
                                 ffp = subprocess.Popen([ffmpeg_path,'-v','error','-progress','ffmpeg.log','-i',image,'-loop','0',os.path.splitext(image)[0]+".webp"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                             else:
@@ -1080,7 +1080,7 @@ def convert(args=args,worker=None):
                                                 logged = True
                                             elif pct >= 100:
                                                 print("\b",file=sys.stderr,end='')
-                                            pos = round(float(val)/10000,2)
+                                            pos = round(float(val)*100,2)
                                             pct = round(pos/duration)
                                             print("\b\b\b{:02d}%".format(pct),file=sys.stderr,end='')
                                             if args.gui:
