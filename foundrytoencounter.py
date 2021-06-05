@@ -269,7 +269,7 @@ def convert(args=args,worker=None):
                                 if m:
                                     key = m.group(1)
                                     val = m.group(2)
-                                    if key == "out_time_us":
+                                    if key == "frame":
                                         if not logged:
                                             print(" webm->mp4:    ",file=sys.stderr,end='')
                                             logged = True
@@ -529,7 +529,7 @@ def convert(args=args,worker=None):
                                     if m:
                                         key = m.group(1)
                                         val = m.group(2)
-                                        if key == "out_time_us":
+                                        if key == "frame":
                                             if not logged:
                                                 print(" webm->webp:    ",file=sys.stderr,end='')
                                                 logged = True
@@ -1074,7 +1074,7 @@ def convert(args=args,worker=None):
                                     if m:
                                         key = m.group(1)
                                         val = m.group(2)
-                                        if key == "out_time_us":
+                                        if key == "frame":
                                             if not logged:
                                                 print(" webm->webp:    ",file=sys.stderr,end='')
                                                 logged = True
