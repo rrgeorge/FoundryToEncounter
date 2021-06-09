@@ -97,12 +97,25 @@ parser.add_argument(
     default=".webp",
     help="convert WebP Maps to JPG, WebP tiles to PNG")
 parser.add_argument(
+    '--link-maps',
+    dest="jrnmap",
+    action='store_const',
+    const=True,
+    default=False,
+    help="Link maps to pages with the same name")
+parser.add_argument(
+    '--system',
+    dest="system",
+    action='store',
+    default=None,
+    help="Restrict content to packs using specified system (will include packs without a system specified)")
+parser.add_argument(
     '-nc',
     dest="noconv",
     action='store_const',
     const=True,
     default=False,
-    help="Do not convert WebP")
+    help="Do not convert WebP (default)")
 parserg = parser.add_mutually_exclusive_group()
 parserg.add_argument(
     dest="srcfile",
@@ -158,7 +171,16 @@ skills = {
     "ste": "Stealth",
     "sur": "Survival"
     }
-
+schools = {
+    "abj": 'A',
+    "con": 'C',
+    "div": 'D',
+    "enc": 'EN',
+    "evo": 'EV',
+    "ill": 'I',
+    "nec": 'N',
+    "trs": 'T'
+    }
 
 def indent(elem, level=0):
     i = "\n" + level * "  "
@@ -263,6 +285,7 @@ def convert(args=args,worker=None):
                         ffp = subprocess.Popen([ffmpeg_path,'-v','error','-i',map["img"],'-vf','pad=\'width=ceil(iw/2)*2:height=ceil(ih/2)*2\'','-vcodec','hevc','-acodec','aac','-vtag','hvc1','-progress','ffmpeg.log',os.path.splitext(map["img"])[0]+".mp4"],startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                         with open('ffmpeg.log','a+') as f:
                             logged = False
+                            pct = 0
                             while ffp.poll() is None:
                                 l = f.readline()
                                 m = re.match(r'(.*?)=(.*)',l)
@@ -751,7 +774,25 @@ def convert(args=args,worker=None):
                         points.append(str((p[0]-map["offsetX"]+d["x"])*map["rescale"]))
                         points.append(str((p[1]-map["offsetY"]+d["y"])*map["rescale"]))
                     ET.SubElement(drawing,'data').text = ",".join(points)
-        if 'journal' in map and map['journal']:
+        if args.jrnmap:
+            print(map['name'])
+            maplink = False
+            for j in sorted(journal,key=lambda j:j['name'] if 'name' in j else ""):
+                if j['name'].startswith(map['name']):
+                    marker = ET.SubElement(mapentry,'marker')
+                    ET.SubElement(marker,'name').text = ""
+                    ET.SubElement(marker,'label').text = "📖"
+                    ET.SubElement(marker,'shape').text = "circle"
+                    ET.SubElement(marker,'x').text = str(round(map["grid"]))
+                    ET.SubElement(marker,'y').text = str(round(map["grid"]))
+                    ET.SubElement(marker,'hidden').text = 'YES'
+                    ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,j['_id']))) })
+                    print("Map Linked to",j['name'])
+                    maplink = True
+                    break
+            if not maplink:
+                print("NOT LINKED",[j['name'] for j in journal])
+        elif 'journal' in map and map['journal']:
                 marker = ET.SubElement(mapentry,'marker')
                 ET.SubElement(marker,'name').text = ""
                 ET.SubElement(marker,'label').text = "📖"
@@ -760,6 +801,16 @@ def convert(args=args,worker=None):
                 ET.SubElement(marker,'y').text = str(round(map["grid"]))
                 ET.SubElement(marker,'hidden').text = 'YES'
                 ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,map['journal']))) })
+        if 'notes' in map and len(map['notes']) > 0:
+            for n in map['notes']:
+                marker = ET.SubElement(mapentry,'marker')
+                ET.SubElement(marker,'name').text = next((j['name'] for (i, j) in enumerate(journal) if 'name' in j and j["_id"] == n['entityId']), None)
+                ET.SubElement(marker,'label').text = "📖"
+                ET.SubElement(marker,'shape').text = "circle"
+                ET.SubElement(marker,'x').text = str(round((n['x']-map["offsetX"])*map["rescale"]))
+                ET.SubElement(marker,'y').text = str(round((n['y']-map["offsetY"])*map["rescale"]))
+                ET.SubElement(marker,'hidden').text = 'YES'
+                ET.SubElement(marker,'content', { 'ref': "/page/{}".format(str(uuid.uuid5(moduuid,n['entityId']))) })
         if 'sounds' in map and len(map['sounds']) > 0:
             for s in map['sounds']:
                 marker = ET.SubElement(mapentry,'marker')
@@ -889,6 +940,9 @@ def convert(args=args,worker=None):
                     f.close()
         if not isworld and mod:
             for pack in mod['packs']:
+                if args.system and 'system' in pack and pack['system'] != args.system:
+                    print("Skipping",pack['name'],pack['system'],"!=",args.system)
+                    continue
                 pack['path'] = pack['path'][1:] if os.path.isabs(pack['path']) else pack['path']
                 if any(x.startswith("{}/".format(mod['name'])) for x in z.namelist()):
                     pack['path'] = mod['name']+'/'+pack['path']
@@ -904,6 +958,9 @@ def convert(args=args,worker=None):
                         elif pack['entity'] == 'Actor':
                             actor = json.loads(l)
                             actors.append(actor)
+                        elif pack['entity'] == 'Item':
+                            item = json.loads(l)
+                            items.append(item)
                         l = f.readline().decode('utf8')
                     f.close()
         if not mod and args.packdir:
@@ -1139,14 +1196,22 @@ def convert(args=args,worker=None):
                 ET.SubElement(asset,'resource').text = os.path.basename(newimage)
                 if not modimage.text and "preview" in f.lower():
                     modimage.text = os.path.basename(newimage)
-    for f in folders:
-        f['sort'] = sort if 'sort' not in f or f['sort'] == None else f['sort']
+    actors = list(filter(lambda actor:actor['_id'] not in [a['_id'] for a in actors if '$$deleted' in a and a['$$deleted']],actors))
+    items = list(filter(lambda item:item['_id'] not in [a['_id'] for a in items if '$$deleted' in a and a['$$deleted']],items))
+    folders = list(filter(lambda folder:folder['_id'] not in [a['_id'] for a in folders if '$$deleted' in a and a['$$deleted']],folders))
+    journal = list(filter(lambda j:j['_id'] not in [a['_id'] for a in journal if '$$deleted' in a and a['$$deleted']],journal))
+    maps = list(filter(lambda map:map['_id'] not in [a['_id'] for a in maps if '$$deleted' in a and a['$$deleted']],maps))
+    playlists = list(filter(lambda playlist:playlist['_id'] not in [a['_id'] for a in playlists if '$$deleted' in a and a['$$deleted']],playlists))
+    tables = list(filter(lambda table:table['_id'] not in [a['_id'] for a in tables if '$$deleted' in a and a['$$deleted']],tables))
+
+    for f in sorted(folders,key=lambda f:f['name'] if 'name' in f else ""):
+        f['sort'] = sort if 'sort' not in f or not f['sort'] else f['sort']
         if f['sort'] > maxorder:
             maxorder = f['sort']
         sort += 1
     sort = 0
-    for j in journal:
-        j['sort'] = sort if 'sort' not in j or j['sort'] == None else j['sort']
+    for j in sorted(journal,key=lambda j:j['name'] if 'name' in j else ""):
+        j['sort'] = sort if 'sort' not in j or not j['sort'] else j['sort']
         if 'flags' in j and 'R20Converter' in j['flags'] and 'handout-order' in j['flags']['R20Converter']:
             j['sort'] += j['flags']['R20Converter']['handout-order']
         if j['sort'] > maxorder:
@@ -1154,7 +1219,7 @@ def convert(args=args,worker=None):
         sort += 1
     sort = 0
     for m in sorted(maps,key=lambda m:m['name'] if 'name' in m else ""):
-        m['sort'] = sort if 'sort' not in m or m['sort'] == None else m['sort']
+        m['sort'] = sort if 'sort' not in m or not m['sort'] else m['sort']
         if m['sort'] and m['sort'] > maxorder:
             maxorder = m['sort']
         sort += 1
@@ -1208,15 +1273,30 @@ def convert(args=args,worker=None):
                 return '<a href="/map/{}">{}</a>'.format(str(uuid.uuid5(moduuid,m.group(2))),m.group(3) or "Map")
             if m.group(1) == "Actor":
                 for a in actors:
-                    if a['_id'] == m.group(2):
-                        return '<a href="/monster/{}">{}</a>'.format(slugify(a['name']),m.group(3) or a['name'],m.group(3))
+                    if a['_id'] == m.group(2) or a['name'] == m.group(2):
+                        return '<a href="/monster/{}">{}</a>'.format(uuid.uuid5(moduuid,a['_id']) if args.compendium else slugify(a['name']),m.group(3) or a['name'],m.group(3))
             if m.group(1) == "Compendium" and m.group(3):
                 (system,entrytype,idnum) = m.group(2).split('.',3)
-                return '<a href="/{}/{}">{}</a>'.format(entrytype,slugify(m.group(3)),m.group(3))
+                if args.compendium:
+                    slug = uuid.uuid5(moduuid,idnum)
+                else:
+                    slug = slugify(m.group(3))
+                entrytype = entrytype.lower().replace('actor','monster').rstrip('s')
+                if 'packs' in mod:
+                    for p in mod['packs']:
+                        if p['name'] == entrytype and p['entity'] == 'Actor':
+                            entrytype = 'monster'
+                        elif p['name'] == entrytype and p['entity'] == 'Item':
+                            entrytype = 'item'
+                            for i in items:
+                                if i['_id'] == idnum and i['type'].lower() == 'spell':
+                                    entrytype = 'spell'
+
+                return '<a href="/{}/{}">{}</a>'.format(entrytype,slug,m.group(3))
             if m.group(1) == "Item":
                 for i in items:
-                    if i['_id'] == m.group(2):
-                        return '<a href="/item/{}">{}</a>'.format(slugify(i['name']),m.group(3) or i['name'])
+                    if i['_id'] == m.group(2) or i['name'] == m.group(2):
+                        return '<a href="/item/{}">{}</a>'.format(uuid.uuid5(moduuid,i['_id']) if args.compendium else slugify(i['name']),m.group(3) or i['name'])
             if m.group(1) == "Macro":
                 if m.group(3):
                     return '<details><summary>{}</summary>This was a Foundry Macro, which cannot be converted.</details>'.format(m.group(3))
@@ -1228,6 +1308,7 @@ def convert(args=args,worker=None):
         if 'img' in j and j['img']:
             content.text += '<img src="{}">'.format(j["img"])
     order = 0
+    maxorder = len(folders)+len(journal) if not maxorder else maxorder
     if len(playlists) > 0:
         if args.gui:
             worker.outputLog("Converting playlists")
@@ -1332,6 +1413,8 @@ def convert(args=args,worker=None):
         content.text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,content.text)
     if 'media' in mod:
         for media in mod['media']:
+            if "url" not in media and "link" in media:
+                media["url"] = media["link"]
             if media['type'] == 'cover' and media["url"]:
                 def progress(block_num, block_size, total_size):
                     pct = 100.00*((block_num * block_size)/total_size)
@@ -1446,13 +1529,13 @@ def convert(args=args,worker=None):
                             f.write(l)
         if os.path.exists(os.path.join(moduletmp,mod["name"],"fonts")):
             os.rename(os.path.join(moduletmp,mod["name"],"fonts"),os.path.join(tempdir,"assets","fonts"))
-
     if args.compendium and (len(items)+len(actors)) > 0:
         if args.gui:
             worker.updateProgress(75)
             worker.outputLog("Generating compendium data")
         def fixHTMLContent(text):
             text = re.sub(r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',fixLink,text)
+            text = re.sub(r'@(.*?)\[(.*?)\](?:\{(.*?)\})?',fixFTag,text)
             text = re.sub(r'<h([0-9]).*?>(.*?)</h\1>',r'<b>\2</b>\n',text)
             text = re.sub(r'<em.*?>(.*?)</em>',r'<i>\1</i>',text)
             text = re.sub(r'<strong.*?>(.*?)</strong>',r'<b>\1</b>',text)
@@ -1464,10 +1547,12 @@ def convert(args=args,worker=None):
             text = re.sub(r'</?p.*?>','',text)
             text = re.sub(r'<br.*?>','\n',text)
             text = re.sub(r'<hr.*?>','------------------------\n',text)
+            text = re.sub(r'<!--.*?-->','',text)
             text = re.sub(r'\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]',fixRoll,text)
             return html.unescape(text)
         compendium = ET.Element('compendium')
         os.mkdir(os.path.join(tempdir,"items"))
+        os.mkdir(os.path.join(tempdir,"spells"))
         os.mkdir(os.path.join(tempdir,"monsters"))
         itemnumber = 0
         for i in items:
@@ -1475,10 +1560,35 @@ def convert(args=args,worker=None):
             if args.gui:
                 worker.updateProgress(75+(itemnumber/(len(items)+len(actors)))*10)
             print("\rGenerating compendium [{}/{}]".format(itemnumber,len(items)+len(actors)),file=sys.stderr,end='')
-            if i['type'] in ['feat','spell']:
+            if i['type'] in ['feat']:
+                continue
+            d = i['data']
+            if i['type'] == 'spell':
+                spell = ET.SubElement(compendium,'spell',{'id': str(uuid.uuid5(moduuid,i['_id']))})
+                ET.SubElement(spell,'name').text = i['name']
+                ET.SubElement(spell,'slug').text = slugify(i['name'])
+                ET.SubElement(spell,'level').text = str(d['level'])
+                ET.SubElement(spell,'school').text = schools[d['school']] if d['school'] in schools else d['school']
+                ET.SubElement(spell,'ritual').text = 'YES' if d['components']['ritual'] else 'NO'
+                ET.SubElement(spell,'time').text = "{} {}".format(d['activation']['cost'],d['activation']['type'])
+                ET.SubElement(spell,'range').text = "{} {}".format("{}/{}".format(d['range']['value'],d['range']['long']) if d['range']['long'] else d['range']['value'],d['range']['long'],d['range']['units'])
+                components = []
+                for component in d['components'].keys():
+                    if component in ['value','ritual','concentration']:
+                        continue
+                    elif d['components'][component]:
+                        comp = component[0].upper()
+                        if comp == 'M' and 'value' in d['materials'] and d['materials']['value']:
+                            if d['materials']['consumed']:
+                                d['materials']['value'] += ", which the spell consumes"
+                            comp += " ({})".format(d['materials']['value'])
+                        components.append(comp)
+                ET.SubElement(spell,'components').text = ",".join(components)
+                ET.SubElement(spell,'duration').text = ("Concentration" if d['components']['concentration'] else "") + "Instantaneous" if d['duration']['units'] == 'inst' else "{} {}".format(d['duration']['value'],d['duration']['units'])
+                ET.SubElement(spell,'source').text = d['source']
+                ET.SubElement(spell,'text').text = d['description']['value'] + "\n<i>Source: " + d['source'] + "</i>"
                 continue
             item = ET.SubElement(compendium,'item',{'id': str(uuid.uuid5(moduuid,i['_id']))})
-            d = i['data']
             ET.SubElement(item,'name').text = i['name']
             ET.SubElement(item,'slug').text = slugify(i['name'])
             if 'weight' in d and d['weight']:
@@ -1510,6 +1620,8 @@ def convert(args=args,worker=None):
                     ET.SubElement(item,'type').text = 'LA'
                 elif d['armor']['type'] in ['medium']:
                     ET.SubElement(item,'type').text = 'MA'
+                elif d['armor']['type'] in ['heavy']:
+                    ET.SubElement(item,'type').text = 'HA'
                 elif d['armor']['type'] in ['shield']:
                     ET.SubElement(item,'type').text = 'S'
                 elif d['armor']['type'] in ['trinket']:
@@ -1533,6 +1645,8 @@ def convert(args=args,worker=None):
                     ET.SubElement(item,'type').text = 'WW'
                 props = []
                 for prop in d['properties'].keys():
+                    if not d['properties'][prop]:
+                        continue
                     if prop == 'amm':
                         props.append('A')
                     if prop == 'fin':
@@ -1555,11 +1669,13 @@ def convert(args=args,worker=None):
                         props.append('V')
                 ET.SubElement(item,'property').text = ','.join(props)
                 if d['damage']['parts']:
-                    ET.SubElement(item,'dmg1').text = d['damage']['parts'][0][0]
+                    ET.SubElement(item,'dmg1').text = re.sub(r'[ ]?\+[ ]?@mod',r'',d['damage']['parts'][0][0],re.I)
                     if d['damage']['parts'][0][1]:
                         ET.SubElement(item,'dmgType').text = d['damage']['parts'][0][1][0].upper()
                 if d['damage']['versatile']:
-                    ET.SubElement(item,'dmg2').text = d['damage']['versatile']
+                    ET.SubElement(item,'dmg2').text = re.sub(r'[ ]?\+[ ]?@mod',r'',d['damage']['versatile'],re.I)
+                if 'range' in d:
+                    ET.SubElement(item,'range').text = "{}/{}".format(d['range']['value'],d['range']['long'])
             elif i['type'] == "loot":
                 ET.SubElement(item,'type').text = 'G'
             else:
