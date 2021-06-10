@@ -1155,10 +1155,24 @@ def convert(args=args, worker=None):
                 for a in actors:
                     if a["_id"] == token["actorId"]:
                         ET.SubElement(tokenel, "reference").text = "/monster/{}".format(
-                            slugify(a["name"])
+                            uuid.uuid5(moduuid, a["_id"])
+                            if args.compendium
+                            else slugify(a["name"])
                         )
                         actorLinked = True
                         break
+                if not actorLinked and args.compendium:
+                    for a in actors:
+                        if a["token"]["name"] == token["name"]:
+                            ET.SubElement(
+                                tokenel, "reference"
+                            ).text = "/monster/{}".format(
+                                uuid.uuid5(moduuid, a["_id"])
+                                if args.compendium
+                                else slugify(a["name"])
+                            )
+                            actorLinked = True
+                            break
                 if not actorLinked:
                     ET.SubElement(tokenel, "reference").text = "/monster/{}".format(
                         slugify(token["name"])
@@ -2628,7 +2642,13 @@ def convert(args=args, worker=None):
             text = re.sub(
                 r"\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]", fixRoll, text
             )
-            return html.unescape(text)
+            text = re.sub(
+                r"<section .*?class=.secret..*?>(.*?)</section>.*",
+                r"\1",
+                text,
+                flags=re.S,
+            )
+            return html.unescape(text.strip())
 
         compendium = ET.Element("compendium")
         os.mkdir(os.path.join(tempdir, "items"))
