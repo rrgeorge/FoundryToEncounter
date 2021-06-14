@@ -982,20 +982,8 @@ def convert(args=args, worker=None):
                     end="",
                 )
                 light = map["lights"][i]
-                # tile = ET.SubElement(mapentry,'tile')
-                # ET.SubElement(tile,'x').text = str(round((light["x"]-map["offsetX"])))
-                # ET.SubElement(tile,'y').text = str(round((light["y"]-map["offsetY"])))
-                # ET.SubElement(tile,'zIndex').text = str(0)
-                # ET.SubElement(tile,'width').text = str(round(50*map["rescale"]))
-                # ET.SubElement(tile,'height').text = str(round(50*map["rescale"]))
-                # ET.SubElement(tile,'opacity').text = "1.0"
-                # ET.SubElement(tile,'rotation').text = str(0)
-                # ET.SubElement(tile,'locked').text = "YES"
-                # ET.SubElement(tile,'layer').text = "dm"
-                # ET.SubElement(tile,'hidden').text = "YES"
-
-                # asset = ET.SubElement(tile,'asset', {'id': str(uuid.uuid5(moduuid,mapslug+"/lights/"+str(i)))})
-                # ET.SubElement(asset,'name').text = "Light {}".format(i+1)
+                if "lightAnimation" in light and light["lightAnimation"] and light["lightAnimation"]["type"] == "ghost":
+                    continue
                 lightel = ET.SubElement(
                     mapentry,
                     "light",
