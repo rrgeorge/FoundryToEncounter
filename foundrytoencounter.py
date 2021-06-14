@@ -2085,6 +2085,82 @@ def convert(args=args, worker=None):
         if m["sort"] and m["sort"] > maxorder:
             maxorder = m["sort"]
         sort += 1
+
+    def fixLink(m):
+        if m.group(2) == "JournalEntry":
+            return '<a href="/page/{}" {} {} {}>'.format(
+                str(uuid.uuid5(moduuid, m.group(4))),
+                m.group(1),
+                m.group(3),
+                m.group(5),
+            )
+        if m.group(2) == "Actor":
+            for a in actors:
+                if a["_id"] == m.group(4):
+                    return '<a href="/monster/{}" {} {} {}>'.format(
+                        slugify(a["name"]), m.group(1), m.group(3), m.group(5)
+                    )
+        return m.group(0)
+
+    def fixFTag(m):
+        if m.group(1) == "JournalEntry":
+            return '<a href="/page/{}">{}</a>'.format(
+                str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Journal Entry"
+            )
+        if m.group(1) == "RollTable":
+            return '<a href="/page/{}">{}</a>'.format(
+                str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Roll Table"
+            )
+        if m.group(1) == "Scene":
+            return '<a href="/map/{}">{}</a>'.format(
+                str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Map"
+            )
+        if m.group(1) == "Actor":
+            for a in actors:
+                if a["_id"] == m.group(2) or a["name"] == m.group(2):
+                    return '<a href="/monster/{}">{}</a>'.format(
+                        uuid.uuid5(moduuid, a["_id"])
+                        if args.compendium
+                        else slugify(a["name"]),
+                        m.group(3) or a["name"],
+                        m.group(3),
+                    )
+        if m.group(1) == "Compendium" and m.group(3):
+            (system, entrytype, idnum) = m.group(2).split(".", 3)
+            if args.compendium:
+                slug = uuid.uuid5(moduuid, idnum)
+            else:
+                slug = slugify(m.group(3))
+            entrytype = entrytype.lower().replace("actor", "monster").rstrip("s")
+            if "packs" in mod:
+                for p in mod["packs"]:
+                    if p["name"] == entrytype and p["entity"] == "Actor":
+                        entrytype = "monster"
+                    elif p["name"] == entrytype and p["entity"] == "Item":
+                        entrytype = "item"
+                        for i in items:
+                            if i["_id"] == idnum and i["type"].lower() == "spell":
+                                entrytype = "spell"
+
+            return '<a href="/{}/{}">{}</a>'.format(entrytype, slug, m.group(3))
+        if m.group(1) == "Item":
+            for i in items:
+                if i["_id"] == m.group(2) or i["name"] == m.group(2):
+                    return '<a href="/item/{}">{}</a>'.format(
+                        uuid.uuid5(moduuid, i["_id"])
+                        if args.compendium
+                        else slugify(i["name"]),
+                        m.group(3) or i["name"],
+                    )
+        if m.group(1) == "Macro":
+            if m.group(3):
+                return "<details><summary>{}</summary>This was a Foundry Macro, which cannot be converted.</details>".format(
+                    m.group(3)
+                )
+            else:
+                return "<details><summary>Unsupported</summary>This was a Foundry Macro, which cannot be converted.</details>"
+        return m.group(0)
+
     if args.gui and len(folders) > 0:
         worker.outputLog("Converting folders")
     for f in folders:
@@ -2137,88 +2213,11 @@ def convert(args=args, worker=None):
         ET.SubElement(page, "slug").text = slugify(j["name"])
         content = ET.SubElement(page, "content")
         content.text = j["content"] or ""
-
-        def fixLink(m):
-            if m.group(2) == "JournalEntry":
-                return '<a href="/page/{}" {} {} {}>'.format(
-                    str(uuid.uuid5(moduuid, m.group(4))),
-                    m.group(1),
-                    m.group(3),
-                    m.group(5),
-                )
-            if m.group(2) == "Actor":
-                for a in actors:
-                    if a["_id"] == m.group(4):
-                        return '<a href="/monster/{}" {} {} {}>'.format(
-                            slugify(a["name"]), m.group(1), m.group(3), m.group(5)
-                        )
-            return m.group(0)
-
         content.text = re.sub(
             r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',
             fixLink,
             content.text,
         )
-
-        def fixFTag(m):
-            if m.group(1) == "JournalEntry":
-                return '<a href="/page/{}">{}</a>'.format(
-                    str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Journal Entry"
-                )
-            if m.group(1) == "RollTable":
-                return '<a href="/page/{}">{}</a>'.format(
-                    str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Roll Table"
-                )
-            if m.group(1) == "Scene":
-                return '<a href="/map/{}">{}</a>'.format(
-                    str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Map"
-                )
-            if m.group(1) == "Actor":
-                for a in actors:
-                    if a["_id"] == m.group(2) or a["name"] == m.group(2):
-                        return '<a href="/monster/{}">{}</a>'.format(
-                            uuid.uuid5(moduuid, a["_id"])
-                            if args.compendium
-                            else slugify(a["name"]),
-                            m.group(3) or a["name"],
-                            m.group(3),
-                        )
-            if m.group(1) == "Compendium" and m.group(3):
-                (system, entrytype, idnum) = m.group(2).split(".", 3)
-                if args.compendium:
-                    slug = uuid.uuid5(moduuid, idnum)
-                else:
-                    slug = slugify(m.group(3))
-                entrytype = entrytype.lower().replace("actor", "monster").rstrip("s")
-                if "packs" in mod:
-                    for p in mod["packs"]:
-                        if p["name"] == entrytype and p["entity"] == "Actor":
-                            entrytype = "monster"
-                        elif p["name"] == entrytype and p["entity"] == "Item":
-                            entrytype = "item"
-                            for i in items:
-                                if i["_id"] == idnum and i["type"].lower() == "spell":
-                                    entrytype = "spell"
-
-                return '<a href="/{}/{}">{}</a>'.format(entrytype, slug, m.group(3))
-            if m.group(1) == "Item":
-                for i in items:
-                    if i["_id"] == m.group(2) or i["name"] == m.group(2):
-                        return '<a href="/item/{}">{}</a>'.format(
-                            uuid.uuid5(moduuid, i["_id"])
-                            if args.compendium
-                            else slugify(i["name"]),
-                            m.group(3) or i["name"],
-                        )
-            if m.group(1) == "Macro":
-                if m.group(3):
-                    return "<details><summary>{}</summary>This was a Foundry Macro, which cannot be converted.</details>".format(
-                        m.group(3)
-                    )
-                else:
-                    return "<details><summary>Unsupported</summary>This was a Foundry Macro, which cannot be converted.</details>"
-            return m.group(0)
-
         content.text = re.sub(r"@(.*?)\[(.*?)\](?:\{(.*?)\})?", fixFTag, content.text)
         content.text = re.sub(
             r"\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]",
@@ -2679,8 +2678,7 @@ def convert(args=args, worker=None):
                     "{}/{}".format(d["range"]["value"], d["range"]["long"])
                     if d["range"]["long"]
                     else d["range"]["value"],
-                    d["range"]["long"],
-                    d["range"]["units"],
+                    d["range"]["units"]
                 )
                 components = []
                 for component in d["components"].keys():
@@ -2733,13 +2731,15 @@ def convert(args=args, worker=None):
                     ET.SubElement(item, "type").text = "WD"
                 elif d["consumableType"] == "scroll":
                     ET.SubElement(item, "type").text = "SC"
-                elif d["consumableType"] == "food":
+                elif d["consumableType"] in ["food", "trinket"]:
                     ET.SubElement(item, "type").text = "G"
+                elif d["consumableType"] == "ammo":
+                    ET.SubElement(item, "type").text = "A"
                 else:
                     print("Dont know consumable:", d["consumableType"])
                     ET.SubElement(item, "type").text = "G"
             elif i["type"] in ["equipment"]:
-                if d["armor"]["type"] in ["clothing"]:
+                if d["armor"]["type"] in ["clothing", "light"]:
                     ET.SubElement(item, "type").text = "LA"
                 elif d["armor"]["type"] in ["medium"]:
                     ET.SubElement(item, "type").text = "MA"
@@ -2757,9 +2757,6 @@ def convert(args=args, worker=None):
             elif i["type"] == "weapon":
                 if d["weaponType"] in ["simpleR", "martialR"]:
                     ET.SubElement(item, "type").text = "R"
-                    ET.SubElement(item, "range").text = "{}/{} {}".format(
-                        d["range"]["value"], d["range"]["long"], d["range"]["units"]
-                    )
                 elif d["weaponType"] in ["simpleM", "martialM"]:
                     ET.SubElement(item, "type").text = "M"
                 elif "staff" in d and d["staff"]:
@@ -2803,13 +2800,16 @@ def convert(args=args, worker=None):
                         ][0].upper()
                 if d["damage"]["versatile"]:
                     ET.SubElement(item, "dmg2").text = re.sub(
-                        r"[ ]?\+[ ]?@mod", r"", d["damage"]["versatile"], re.I
+                        r"\[\[a-z]*\]?[ ]?\+[ ]?(@mod)?", r"", d["damage"]["versatile"], re.I
                     )
                 if "range" in d:
-                    ET.SubElement(item, "range").text = "{}/{}".format(
-                        d["range"]["value"], d["range"]["long"]
+                    ET.SubElement(item, "range").text = "{} {}".format(
+                        "{}/{}".format(d["range"]["value"], d["range"]["long"])
+                        if d["range"]["long"]
+                        else d["range"]["value"],
+                        d["range"]["units"]
                     )
-            elif i["type"] == "loot":
+            elif i["type"] in ["loot", "backpack", "tool"]:
                 ET.SubElement(item, "type").text = "G"
             else:
                 print("Dont know item type", i["type"])
@@ -2849,7 +2849,15 @@ def convert(args=args, worker=None):
             ET.SubElement(monster, "slug").text = slugify(a["name"])
             ET.SubElement(monster, "size").text = d["traits"]["size"][0].upper()
             if "type" in d["details"]:
-                ET.SubElement(monster, "type").text = d["details"]["type"]
+                if type(d["details"]["type"]) == dict:
+                    monstertype = d["details"]["type"]["value"]
+                    if d["details"]["type"]["swarm"]:
+                        monstertype = "swarm of {} {}s".format(d["details"]["type"]["swarm"].title(), monstertype)
+                    if d["details"]["type"]["subtype"]:
+                        monstertype += " ({})".format(d["details"]["type"]["subtype"])
+                    ET.SubElement(monster, "type").text = d["details"]["type"]["custom"] or monstertype
+                else:
+                    ET.SubElement(monster, "type").text = d["details"]["type"]
             if "alignment" in d["details"]:
                 ET.SubElement(monster, "alignment").text = d["details"]["alignment"]
             ET.SubElement(monster, "ac").text = str(d["attributes"]["ac"]["value"])
