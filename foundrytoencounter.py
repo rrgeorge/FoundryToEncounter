@@ -2176,7 +2176,7 @@ def convert(args=args, worker=None):
             file=sys.stderr,
             end="",
         )
-        if f["type"] not in ["JournalEntry", "RollTable"]:
+        if f["type"] not in ["JournalEntry", "RollTable", "Scene"]:
             continue
         folder = ET.SubElement(
             module,
