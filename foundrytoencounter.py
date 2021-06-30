@@ -761,6 +761,8 @@ def convert(args=args, worker=None):
         if "tiles" in map:
             for i in range(len(map["tiles"])):
                 image = map["tiles"][i]
+                if "scale" not in image:
+                    image["scale"] = 1
                 image["img"] = urllib.parse.unquote(image["img"])
                 print(
                     "\rtiles [{}/{}]".format(i, len(map["tiles"])),
