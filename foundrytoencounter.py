@@ -493,7 +493,7 @@ def convert(args=args, worker=None):
                     print("Rescaling {}x{} ".format(img.width, img.height), end="")
                     if args.gui:
                         worker.outputLog(
-                            " - Resizing map from {}x{} to {}x{}".format(
+                            " - Resizing map from {}x{} to {}x{} {}".format(
                                 img.width,
                                 img.height,
                                 round(img.width * scale),
@@ -503,7 +503,7 @@ def convert(args=args, worker=None):
                     img = img.resize(
                         (round(img.width * scale), round(img.height * scale))
                     )
-                    print("to {}x{}".format(img.width, img.height))
+                    print("to {}x{} {}x".format(img.width, img.height,scale))
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if args.gui:
                             worker.outputLog(
@@ -627,7 +627,7 @@ def convert(args=args, worker=None):
             map["shiftY"] *= map["realign"]
         map["rescale"] *= map["realign"]
         ET.SubElement(mapentry, "gridSize").text = str(round(map["grid"]))
-        ET.SubElement(mapentry, "scale").text = str(map["scale"] * map["realign"])
+        ET.SubElement(mapentry, "scale").text = str(map["realign"])
         ET.SubElement(mapentry, "gridScale").text = str(round(map["gridDistance"]))
         ET.SubElement(mapentry, "gridUnits").text = str(map["gridUnits"])
         ET.SubElement(mapentry, "gridVisible").text = (
@@ -984,7 +984,7 @@ def convert(args=args, worker=None):
                     end="",
                 )
                 light = map["lights"][i]
-                if "lightAnimation" in light and light["lightAnimation"] and light["lightAnimation"]["type"] == "ghost":
+                if "lightAnimation" in light and light["lightAnimation"] and "type" in light["lightAnimation"] and light["lightAnimation"]["type"] == "ghost":
                     continue
                 lightel = ET.SubElement(
                     mapentry,
@@ -2063,13 +2063,13 @@ def convert(args=args, worker=None):
             tables,
         )
     )
-
+    sort = 1
     for f in sorted(folders, key=lambda f: f["name"] if "name" in f else ""):
         f["sort"] = sort if "sort" not in f or not f["sort"] else f["sort"]
         if f["sort"] > maxorder:
             maxorder = f["sort"]
         sort += 1
-    sort = 0
+    sort = 1
     for j in sorted(journal, key=lambda j: j["name"] if "name" in j else ""):
         j["sort"] = sort if "sort" not in j or not j["sort"] else j["sort"]
         if (
@@ -2081,7 +2081,7 @@ def convert(args=args, worker=None):
         if j["sort"] > maxorder:
             maxorder = j["sort"]
         sort += 1
-    sort = 0
+    sort = 1
     for m in sorted(maps, key=lambda m: m["name"] if "name" in m else ""):
         m["sort"] = sort if "sort" not in m or not m["sort"] else m["sort"]
         if m["sort"] and m["sort"] > maxorder:
