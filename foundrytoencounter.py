@@ -1351,7 +1351,7 @@ def convert(args=args, worker=None):
                     (
                         j["name"]
                         for (i, j) in enumerate(journal)
-                        if "name" in j and j["_id"] == n["entityId"]
+                        if "name" in j and j["_id"] == n["entryId"]
                     ),
                     None,
                 )
@@ -1367,7 +1367,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(
                     marker,
                     "content",
-                    {"ref": "/page/{}".format(str(uuid.uuid5(moduuid, n["entityId"])))},
+                    {"ref": "/page/{}".format(str(uuid.uuid5(moduuid, n["entryId"])))},
                 )
         if "sounds" in map and len(map["sounds"]) > 0:
             for s in map["sounds"]:
@@ -2106,6 +2106,11 @@ def convert(args=args, worker=None):
 
     def fixFTag(m):
         if m.group(1) == "JournalEntry":
+            for j in journal:
+                if j["_id"] == j.group(2) or j["name"] == m.group(2):
+                    return '<a href="/page/{}">{}</a>'.format(
+                        str(uuid.uuid5(moduuid, j["_id"])), j.group(3) or j["name"]
+                    )
             return '<a href="/page/{}">{}</a>'.format(
                 str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Journal Entry"
             )
@@ -2114,6 +2119,11 @@ def convert(args=args, worker=None):
                 str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Roll Table"
             )
         if m.group(1) == "Scene":
+            for map in maps:
+                if map["_id"] == m.group(2) or map["name"] == m.group(2):
+                    return '<a href="/map/{}">{}</a>'.format(
+                        str(uuid.uuid5(moduuid, map["_id"])), m.group(3) or map["name"]
+                    )
             return '<a href="/map/{}">{}</a>'.format(
                 str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Map"
             )
@@ -2862,7 +2872,7 @@ def convert(args=args, worker=None):
                     ET.SubElement(monster, "type").text = d["details"]["type"]
             if "alignment" in d["details"]:
                 ET.SubElement(monster, "alignment").text = d["details"]["alignment"]
-            ET.SubElement(monster, "ac").text = str(d["attributes"]["ac"]["value"])
+            ET.SubElement(monster, "ac").text = str(d["attributes"]["ac"]["value"] if "value" in d["attributes"]["ac"] else d["attributes"]["ac"]["flat"])
             if "formula" in d["attributes"]["hp"] and d["attributes"]["hp"]["formula"]:
                 ET.SubElement(monster, "hp").text = "{} ({})".format(
                     d["attributes"]["hp"]["value"], d["attributes"]["hp"]["formula"]
