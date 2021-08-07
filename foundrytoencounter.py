@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 
 zipfile.ZIP64_LIMIT = 4294967294
 
