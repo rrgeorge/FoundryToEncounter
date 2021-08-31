@@ -646,6 +646,11 @@ def convert(args=args, worker=None):
         ET.SubElement(mapentry, "lineOfSight").text = (
             "YES" if map["tokenVision"] else "NO"
         )
+        if "fogExploration" in map and map["fogExploration"]:
+            ET.SubElement(mapentry, "fogOfWar").text = "YES"
+            ET.SubElement(mapentry, "fogExploration").text = "YES"
+        if "globalLight" in map and map["globalLight"]:
+            ET.SubElement(mapentry, "losDaylight").text = str(1.0-map["darkness"])
         if "walls" in map and len(map["walls"]) > 0:
             for i in range(len(map["walls"])):
                 p = map["walls"][i]
