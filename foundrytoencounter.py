@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 
 zipfile.ZIP64_LIMIT = 4294967294
 
@@ -2112,9 +2112,9 @@ def convert(args=args, worker=None):
     def fixFTag(m):
         if m.group(1) == "JournalEntry":
             for j in journal:
-                if j["_id"] == j.group(2) or j["name"] == m.group(2):
+                if j["_id"] == m.group(2) or j["name"] == m.group(2):
                     return '<a href="/page/{}">{}</a>'.format(
-                        str(uuid.uuid5(moduuid, j["_id"])), j.group(3) or j["name"]
+                        str(uuid.uuid5(moduuid, j["_id"])), m.group(3) or j["name"]
                     )
             return '<a href="/page/{}">{}</a>'.format(
                 str(uuid.uuid5(moduuid, m.group(2))), m.group(3) or "Journal Entry"
@@ -2886,7 +2886,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(monster, "hp").text = "{}".format(
                     d["attributes"]["hp"]["value"]
                 )
-            if "speed" in d["attributes"]:
+            if "speed" in d["attributes"] and "_deprecated" not in d["attributes"]["speed"]:
                 if d["attributes"]["speed"]["special"]:
                     ET.SubElement(monster, "speed").text = (
                         d["attributes"]["speed"]["value"]
