@@ -24,9 +24,10 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.0"
+VERSION = "1.13.1"
 
 zipfile.ZIP64_LIMIT = 4294967294
+PIL.Image.MAX_IMAGE_PIXELS = 200000000
 
 try:
     ffmpeg_path = shutil.which("ffmpeg") or shutil.which("ffmpeg", path=os.defpath)
@@ -345,8 +346,8 @@ def convert(args=args, worker=None):
                 if map["width"] >= map["height"]
                 else 8192.0 / map["height"]
             )
-            map["width"] *= round(map["rescale"])
-            map["height"] *= round(map["rescale"])
+            map["width"] = round(map["width"]*map["rescale"])
+            map["height"] = round(map["height"]*map["rescale"])
 
         mapentry = ET.SubElement(
             module,
@@ -450,6 +451,15 @@ def convert(args=args, worker=None):
                     ET.SubElement(mapentry, "video").text = (
                         os.path.splitext(map["img"])[0] + ".mp4"
                     )
+                    with PIL.Image.open(map["img"]) as img:
+                        if map["height"] != img.height or map["width"] != img.width:
+                            map["rescale"] = (
+                                img.width / map["width"]
+                                if map["width"] >= map["height"]
+                                else img.height / map["height"]
+                            )
+                            map["width"] = round(map["width"]*map["rescale"])
+                            map["height"] = round(map["height"]*map["rescale"])
                 except Exception:
                     import traceback
 
@@ -465,21 +475,17 @@ def convert(args=args, worker=None):
                 ET.SubElement(mapentry, "image").text = map["img"]
             with PIL.Image.open(map["img"]) as img:
                 if (map["width"] / map["height"]) != (img.width / img.height):
-                    if img.width >= img.height:
-                        neww = img.width if img.width <= 8192 else 8192
-                        newh = round(neww * (map["height"] / map["width"]))
-                    else:
-                        newh = img.height if img.height <= 8192 else 8192
-                        neww = round(newh * (map["width"] / map["height"]))
+                    neww = map["width"]
+                    newh = map["height"]
                     if newh != img.height or neww != img.width:
                         print(
                             map["name"],
-                            "Resizing {}x{} to {}x{} ({})".format(
+                            "Resizing {}x{} to {}x{} ({}!={})".format(
                                 img.width,
                                 img.height,
                                 neww,
                                 newh,
-                                (map["width"] / map["height"]),
+                                (img.width / img.height),(map["width"] / map["height"]),
                             ),
                         )
                         img = img.resize((neww, newh))
@@ -834,7 +840,7 @@ def convert(args=args, worker=None):
                                         image["img"],
                                         "-loop",
                                         "0",
-                                        os.path.splitext(image["img"])[0] + ".webp",
+                                        image["img"] + ".webp",
                                     ],
                                     startupinfo=startupinfo,
                                     stdout=subprocess.DEVNULL,
@@ -855,7 +861,7 @@ def convert(args=args, worker=None):
                                         image["img"],
                                         "-loop",
                                         "0",
-                                        os.path.splitext(image["img"])[0] + ".webp",
+                                        image["img"] + ".webp",
                                     ],
                                     startupinfo=startupinfo,
                                     stdout=subprocess.DEVNULL,
@@ -892,10 +898,10 @@ def convert(args=args, worker=None):
                                                 worker.updateProgress(pct)
                                             sys.stderr.flush()
                             os.remove("ffmpeg.log")
-                        if os.path.exists(os.path.splitext(image["img"])[0] + ".webp"):
+                        if os.path.exists(image["img"] + ".webp"):
                             ET.SubElement(asset, "type").text = "animatedImage"
                             ET.SubElement(asset, "resource").text = (
-                                os.path.splitext(image["img"])[0] + ".webp"
+                                image["img"] + ".webp"
                             )
                         continue
                     except Exception:
@@ -1515,6 +1521,7 @@ def convert(args=args, worker=None):
             args.srcfile = os.path.join(tempdir, "module.zip")
 
     with zipfile.ZipFile(args.srcfile) as z:
+        dirpath = ""
         journal = []
         maps = []
         folders = []
@@ -1526,10 +1533,12 @@ def convert(args=args, worker=None):
         isworld = False
         for filename in z.namelist():
             if os.path.basename(filename) == "world.json":
+                dirpath = os.path.dirname(filename)
                 with z.open(filename) as f:
                     mod = json.load(f)
                 isworld = True
             elif not mod and os.path.basename(filename) == "module.json":
+                dirpath = os.path.dirname(filename)
                 with z.open(filename) as f:
                     mod = json.load(f)
             elif (
@@ -1619,23 +1628,31 @@ def convert(args=args, worker=None):
                 )
                 if any(x.startswith("{}/".format(mod["name"])) for x in z.namelist()):
                     pack["path"] = mod["name"] + "/" + pack["path"]
-                with z.open(pack["path"]) as f:
-                    l = f.readline().decode("utf8")
-                    while l:
-                        if pack["entity"] == "JournalEntry":
-                            jrn = json.loads(l)
-                            journal.append(jrn)
-                        elif pack["entity"] == "Scene":
-                            scene = json.loads(l)
-                            maps.append(scene)
-                        elif pack["entity"] == "Actor":
-                            actor = json.loads(l)
-                            actors.append(actor)
-                        elif pack["entity"] == "Item":
-                            item = json.loads(l)
-                            items.append(item)
+                if pack["path"].startswith("./") and dirpath:
+                    pack["path"] = dirpath + pack["path"][1:]
+                try:
+                    with z.open(pack["path"]) as f:
                         l = f.readline().decode("utf8")
-                    f.close()
+                        while l:
+                            if pack["entity"] == "JournalEntry":
+                                jrn = json.loads(l)
+                                journal.append(jrn)
+                            elif pack["entity"] == "Scene":
+                                scene = json.loads(l)
+                                maps.append(scene)
+                            elif pack["entity"] == "Actor":
+                                actor = json.loads(l)
+                                actors.append(actor)
+                            elif pack["entity"] == "Item":
+                                item = json.loads(l)
+                                items.append(item)
+                            elif pack["entity"] == "Playlist":
+                                playlist = json.loads(l)
+                                playlists.append(playlist)
+                            l = f.readline().decode("utf8")
+                        f.close()
+                except Exception as e:
+                    print("Could not open",pack["path"],e)
         if not mod and args.packdir:
             mod = {
                 "title": os.path.splitext(os.path.basename(args.srcfile))[0].title(),
@@ -1855,7 +1872,7 @@ def convert(args=args, worker=None):
                                         image,
                                         "-loop",
                                         "0",
-                                        os.path.splitext(image)[0] + ".webp",
+                                        image + ".webp",
                                     ],
                                     startupinfo=startupinfo,
                                     stdout=subprocess.DEVNULL,
@@ -1876,7 +1893,7 @@ def convert(args=args, worker=None):
                                         image,
                                         "-loop",
                                         "0",
-                                        os.path.splitext(image)[0] + ".webp",
+                                        image + ".webp",
                                     ],
                                     startupinfo=startupinfo,
                                     stdout=subprocess.DEVNULL,
@@ -1914,9 +1931,9 @@ def convert(args=args, worker=None):
                                                 worker.updateProgress(pct)
                                             sys.stderr.flush()
                             os.remove("ffmpeg.log")
-                        if os.path.exists(os.path.splitext(image)[0] + ".webp"):
+                        if os.path.exists(image + ".webp"):
                             ET.SubElement(asset, "type").text = "animatedImage"
-                            image = os.path.splitext(image)[0] + ".webp"
+                            image = image + ".webp"
                             if os.path.exists(
                                 os.path.join(packdir, os.path.basename(image).lower())
                             ):
@@ -2452,12 +2469,12 @@ def convert(args=args, worker=None):
                         file=sys.stderr,
                         end="",
                     )
-
-                urllib.request.urlretrieve(
-                    media["url"],
-                    os.path.join(tempdir, os.path.basename(media["url"])),
-                    progress,
-                )
+                if urllib.parse.urlparse(media['url']).scheme:
+                    urllib.request.urlretrieve(
+                        media["url"],
+                        os.path.join(tempdir, os.path.basename(media["url"])),
+                        progress,
+                    )
                 modimage.text = os.path.basename(media["url"])
     mapcount = 0
     if len(maps) > 0:
