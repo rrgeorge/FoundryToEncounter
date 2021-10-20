@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.1"
+VERSION = "1.13.2"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -834,6 +834,8 @@ def convert(args=args, worker=None):
                                         ffmpeg_path,
                                         "-v",
                                         "error",
+                                        "-vcodec",
+                                        "libvpx",
                                         "-progress",
                                         "ffmpeg.log",
                                         "-i",
@@ -1671,8 +1673,12 @@ def convert(args=args, worker=None):
             moduletmp = os.path.join(tempdir, "modules")
         os.mkdir(moduletmp)
         if not any(x.startswith("{}/".format(mod["name"])) for x in z.namelist()):
-            os.mkdir(os.path.join(moduletmp, mod["name"]))
-            z.extractall(path=os.path.join(moduletmp, mod["name"]))
+            if dirpath:
+                z.extractall(path=moduletmp)
+                os.rename(os.path.join(moduletmp,dirpath),os.path.join(moduletmp,mod["name"]))
+            else:
+                os.mkdir(os.path.join(moduletmp, mod["name"]))
+                z.extractall(path=os.path.join(moduletmp, mod["name"]))
         else:
             z.extractall(path=moduletmp)
     if os.path.exists(os.path.join(tempdir, "module.zip")):
@@ -1825,11 +1831,6 @@ def convert(args=args, worker=None):
                 ET.SubElement(asset, "name").text = os.path.splitext(
                     os.path.basename(image)
                 )[0]
-                size = re.search(
-                    r"[0-9]+[xX][0-9]", os.path.splitext(os.path.basename(image))[0]
-                )
-                if size:
-                    ET.SubElement(asset, "size").text = size.group(0)
                 tags = re.search(
                     r"(.*)_(?:tiny|small|medium|large|huge)(?:plus)?_.*",
                     os.path.splitext(os.path.basename(image))[0],
@@ -1866,6 +1867,8 @@ def convert(args=args, worker=None):
                                         ffmpeg_path,
                                         "-v",
                                         "error",
+                                        "-vcodec",
+                                        "libvpx",
                                         "-progress",
                                         "ffmpeg.log",
                                         "-i",
@@ -1958,6 +1961,22 @@ def convert(args=args, worker=None):
                             shutil.copy(
                                 image, os.path.join(packdir, os.path.basename(newimage))
                             )
+                            size = re.search(
+                                r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+))", os.path.splitext(os.path.basename(newimage))[0]
+                            )
+                            if size:
+                                h = 1
+                                w = 1
+                                if size.group(2):
+                                    w = max(int(int(size.group(2))/5),1)
+                                elif size.group(3) and size.group(4):
+                                    w = int(size.group(3))
+                                    h = int(size.group(4))
+                                with PIL.Image.open(os.path.join(packdir, os.path.basename(newimage))) as img:
+                                    if img.width == w and img.height == h:
+                                        w = max(int(w/100),1)
+                                        h = max(int(h/100),1)
+                                ET.SubElement(asset, "size").text = "{}x{}".format(w,h)
                             ET.SubElement(asset, "resource").text = os.path.basename(
                                 newimage
                             )
@@ -1983,6 +2002,21 @@ def convert(args=args, worker=None):
                         ET.SubElement(asset, "type").text = "animatedImage"
                     else:
                         ET.SubElement(asset, "type").text = "image"
+                    size = re.search(
+                        r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+))", os.path.splitext(os.path.basename(image))[0]
+                    )
+                    if size:
+                        h = 1
+                        w = 1
+                        if size.group(2):
+                            w = max(int(int(size.group(2))/5),1)
+                        elif size.group(3) and size.group(4):
+                            w = int(size.group(3))
+                            h = int(size.group(4))
+                        if img.width == w and img.height == h:
+                            w = max(int(w/100),1)
+                            h = max(int(h/100),1)
+                        ET.SubElement(asset, "size").text = "{}x{}".format(w,h)
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if img.width > 4096 or img.height > 4096:
                             scale = (
@@ -2475,6 +2509,10 @@ def convert(args=args, worker=None):
                         os.path.join(tempdir, os.path.basename(media["url"])),
                         progress,
                     )
+                else:
+                    shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),os.path.basename(media["url"])),os.path.join(tempdir,os.path.basename(media["url"])))
+                if packdir:
+                    shutil.copy(os.path.join(tempdir,os.path.basename(media["url"])),os.path.join(packdir,os.path.basename(media["url"])))
                 modimage.text = os.path.basename(media["url"])
     mapcount = 0
     if len(maps) > 0:
