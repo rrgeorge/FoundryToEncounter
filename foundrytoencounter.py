@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.2"
+VERSION = "1.13.3"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1135,7 +1135,7 @@ def convert(args=args, worker=None):
                     "YES" if token["vision"] else "NO"
                 )
                 ET.SubElement(vision, "light").text = (
-                    "YES" if token["dimLight"] > 0 or token["brightLight"] > 0 else "NO"
+                    "YES" if int(token["dimLight"]) > 0 or int(token["brightLight"]) > 0 else "NO"
                 )
                 ET.SubElement(vision, "lightRadiusMin").text = str(
                     round(token["brightLight"])
@@ -1145,13 +1145,13 @@ def convert(args=args, worker=None):
                 )
                 ET.SubElement(vision, "lightOpacity").text = str(token["lightAlpha"])
                 ET.SubElement(vision, "dark").text = (
-                    "YES" if token["dimSight"] > 0 or token["brightSight"] > 0 else "NO"
+                    "YES" if int(token["dimSight"]) > 0 or int(token["brightSight"]) > 0 else "NO"
                 )
                 ET.SubElement(vision, "darkRadiusMin").text = str(
-                    round(token["brightSight"])
+                    round(int(token["brightSight"]))
                 )
                 ET.SubElement(vision, "darkRadiusMax").text = str(
-                    round(token["dimSight"])
+                    round(int(token["dimSight"]))
                 )
 
                 actorLinked = False
@@ -2194,7 +2194,7 @@ def convert(args=args, worker=None):
                         m.group(3),
                     )
         if m.group(1) == "Compendium" and m.group(3):
-            (system, entrytype, idnum) = m.group(2).split(".", 3)
+            (system, entrytype, idnum) = m.group(2).split(".", 2)
             if args.compendium:
                 slug = uuid.uuid5(moduuid, idnum)
             else:
@@ -3598,8 +3598,18 @@ if args.gui:
         def selectPack(self):
             paths = []
             with zipfile.ZipFile(self.foundryFile) as z:
+                dirpath = ""
+                for filename in z.namelist():
+                    if os.path.basename(filename) == "world.json":
+                        dirpath = os.path.dirname(filename)
+                    elif os.path.basename(filename) == "module.json":
+                        dirpath = os.path.dirname(filename)
                 for filename in z.namelist():
                     parent, f = os.path.split(filename)
+                    if parent.startswith(dirpath):
+                        parent = parent[len(dirpath):]
+                        if parent.startswith("/"):
+                            parent = parent[1:]
                     if parent and parent not in paths:
                         paths.append(parent)
             packdir, okPressed = QInputDialog.getItem(
