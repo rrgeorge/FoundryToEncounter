@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.3"
+VERSION = "1.13.4"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -379,11 +379,9 @@ def convert(args=args, worker=None):
                                 "-vf",
                                 "pad='width=ceil(iw/2)*2:height=ceil(ih/2)*2'",
                                 "-vcodec",
-                                "hevc",
+                                "libx264",
                                 "-acodec",
                                 "aac",
-                                "-vtag",
-                                "hvc1",
                                 "-progress",
                                 "ffmpeg.log",
                                 os.path.splitext(map["img"])[0] + ".mp4",
@@ -1630,6 +1628,8 @@ def convert(args=args, worker=None):
                 )
                 if any(x.startswith("{}/".format(mod["name"])) for x in z.namelist()):
                     pack["path"] = mod["name"] + "/" + pack["path"]
+                if dirpath and any(x.startswith("{}/".format(dirpath)) for x in z.namelist()):
+                    pack["path"] = dirpath + "/" + pack["path"]
                 if pack["path"].startswith("./") and dirpath:
                     pack["path"] = dirpath + pack["path"][1:]
                 try:
@@ -2511,7 +2511,7 @@ def convert(args=args, worker=None):
                     )
                 else:
                     shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),os.path.basename(media["url"])),os.path.join(tempdir,os.path.basename(media["url"])))
-                if packdir:
+                if args.packdir:
                     shutil.copy(os.path.join(tempdir,os.path.basename(media["url"])),os.path.join(packdir,os.path.basename(media["url"])))
                 modimage.text = os.path.basename(media["url"])
     mapcount = 0
@@ -2993,7 +2993,7 @@ def convert(args=args, worker=None):
                         and v["mod"] != d["abilities"][v["ability"]]["mod"]
                     )
                 ]
-            )
+            ) if "skills" in d else ""
             ET.SubElement(monster, "immune").text = "; ".join(
                 d["traits"]["di"]["value"]
             ) + (
@@ -3026,7 +3026,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(monster, "senses").text = d["traits"]["senses"]
             ET.SubElement(monster, "passive").text = (
                 str(d["skills"]["prc"]["passive"])
-                if "passive" in d["skills"]["prc"]
+                if "skills" in d and "passive" in d["skills"]["prc"]
                 else ""
             )
             ET.SubElement(monster, "languages").text = ", ".join(
@@ -3036,7 +3036,7 @@ def convert(args=args, worker=None):
                 if "special" in d["traits"]["languages"]
                 and d["traits"]["languages"]["special"]
                 else ""
-            )
+            ) if "traits" in d and "languages" in d["traits"] else ""
             ET.SubElement(monster, "description").text = fixHTMLContent(
                 (
                     d["details"]["biography"]["value"]
