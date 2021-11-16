@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.4"
+VERSION = "1.13.5"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1628,7 +1628,7 @@ def convert(args=args, worker=None):
                 )
                 if any(x.startswith("{}/".format(mod["name"])) for x in z.namelist()):
                     pack["path"] = mod["name"] + "/" + pack["path"]
-                if dirpath and any(x.startswith("{}/".format(dirpath)) for x in z.namelist()):
+                if dirpath and not pack["path"].startswith("{}/".format(dirpath)) and any(x.startswith("{}/".format(dirpath)) for x in z.namelist()):
                     pack["path"] = dirpath + "/" + pack["path"]
                 if pack["path"].startswith("./") and dirpath:
                     pack["path"] = dirpath + pack["path"][1:]
