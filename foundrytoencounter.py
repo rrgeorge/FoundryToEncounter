@@ -1619,6 +1619,10 @@ def convert(args=args, worker=None):
                         l = f.readline().decode("utf8")
                     f.close()
         if not isworld and mod:
+            if "EncounterPackDir" in mod:
+                args.packdir = mod["EncounterPackDir"]
+            if "packs" not in mod:
+                mod["packs"] = []
             for pack in mod["packs"]:
                 if args.system and "system" in pack and pack["system"] != args.system:
                     print("Skipping", pack["name"], pack["system"], "!=", args.system)
