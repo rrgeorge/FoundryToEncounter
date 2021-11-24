@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.5"
+VERSION = "1.13.6"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1962,7 +1962,7 @@ def convert(args=args, worker=None):
                                 image, os.path.join(packdir, os.path.basename(newimage))
                             )
                             size = re.search(
-                                r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+))", os.path.splitext(os.path.basename(newimage))[0]
+                                r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+)(?:x([0-9\.]+))?|(tiny|small|medium|large|huge)(x[0-9\.]+)?)", os.path.splitext(os.path.basename(newimage))[0].lower()
                             )
                             if size:
                                 h = 1
@@ -1972,6 +1972,17 @@ def convert(args=args, worker=None):
                                 elif size.group(3) and size.group(4):
                                     w = int(size.group(3))
                                     h = int(size.group(4))
+                                    if size.group(5):
+                                        ET.SubElement(asset, "scale").text = str(size.group(5))
+                                elif size.group(6):
+                                    if size.group(5) == "large":
+                                        w = 2
+                                        h = 2
+                                    elif size.group(5) == "huge":
+                                        w = 3
+                                        h = 3
+                                    if size.group(7):
+                                        ET.SubElement(asset, "scale").text = str(size.group(7)) 
                                 with PIL.Image.open(os.path.join(packdir, os.path.basename(newimage))) as img:
                                     if img.width == w and img.height == h:
                                         w = max(int(w/100),1)
@@ -2003,7 +2014,7 @@ def convert(args=args, worker=None):
                     else:
                         ET.SubElement(asset, "type").text = "image"
                     size = re.search(
-                        r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+))", os.path.splitext(os.path.basename(image))[0]
+                        r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+)(?:x([0-9.]+))?|(tiny|small|medium|large|huge)(x[0-9.]+)?)", os.path.splitext(os.path.basename(image))[0].lower()
                     )
                     if size:
                         h = 1
@@ -2013,9 +2024,20 @@ def convert(args=args, worker=None):
                         elif size.group(3) and size.group(4):
                             w = int(size.group(3))
                             h = int(size.group(4))
+                            if size.group(5):
+                                ET.SubElement(asset, "scale").text = str(size.group(5))
                         if img.width == w and img.height == h:
                             w = max(int(w/100),1)
                             h = max(int(h/100),1)
+                        elif size.group(6):
+                            if size.group(6) == "large":
+                                w = 2
+                                h = 2
+                            elif size.group(6) == "huge":
+                                w = 3
+                                h = 3
+                            if size.group(7):
+                                ET.SubElement(asset, "scale").text = str(size.group(7)) 
                         ET.SubElement(asset, "size").text = "{}x{}".format(w,h)
                     if imgext == ".webp" and args.jpeg != ".webp":
                         if img.width > 4096 or img.height > 4096:
@@ -2506,14 +2528,14 @@ def convert(args=args, worker=None):
                 if urllib.parse.urlparse(media['url']).scheme:
                     urllib.request.urlretrieve(
                         media["url"],
-                        os.path.join(tempdir, os.path.basename(media["url"])),
+                        os.path.join(tempdir, os.path.basename(media["url"]).lower()),
                         progress,
                     )
                 else:
-                    shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),os.path.basename(media["url"])),os.path.join(tempdir,os.path.basename(media["url"])))
+                    shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),os.path.basename(media["url"])),os.path.join(tempdir,os.path.basename(media["url"]).lower()))
                 if args.packdir:
-                    shutil.copy(os.path.join(tempdir,os.path.basename(media["url"])),os.path.join(packdir,os.path.basename(media["url"])))
-                modimage.text = os.path.basename(media["url"])
+                    shutil.copy(os.path.join(tempdir,os.path.basename(media["url"].lower())),os.path.join(packdir,os.path.basename(media["url"]).lower()))
+                modimage.text = os.path.basename(media["url"]).lower()
     mapcount = 0
     if len(maps) > 0:
         if args.gui:
