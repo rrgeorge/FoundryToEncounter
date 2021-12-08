@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.6"
+VERSION = "1.13.7"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -3063,11 +3063,12 @@ def convert(args=args, worker=None):
                 and d["traits"]["languages"]["special"]
                 else ""
             ) if "traits" in d and "languages" in d["traits"] else ""
+
             ET.SubElement(monster, "description").text = fixHTMLContent(
                 (
-                    d["details"]["biography"]["value"]
+                    (d["details"]["biography"]["value"] or "")
                     + "\n"
-                    + d["details"]["biography"]["public"]
+                    + (d["details"]["biography"]["public"] or "")
                 ).rstrip()
             )
             if "cr" in d["details"]:
