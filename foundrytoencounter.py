@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.7"
+VERSION = "1.13.8"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -109,6 +109,14 @@ parser.add_argument(
     help="create an asset pack using path provided instead of module",
 )
 parser.add_argument(
+    "-pn",
+    dest="packname",
+    action="store_const",
+    default=False,
+    const=True,
+    help="use asset path for pack name",
+)
+parser.add_argument(
     "-c",
     dest="compendium",
     action="store_const",
@@ -146,6 +154,14 @@ parser.add_argument(
     const=True,
     default=False,
     help="Do not convert WebP (default)",
+)
+parser.add_argument(
+    "-nj",
+    dest="noj",
+    action="store_const",
+    const=True,
+    default=False,
+    help="Skip journals",
 )
 parserg = parser.add_mutually_exclusive_group()
 parserg.add_argument(
@@ -449,15 +465,21 @@ def convert(args=args, worker=None):
                     ET.SubElement(mapentry, "video").text = (
                         os.path.splitext(map["img"])[0] + ".mp4"
                     )
+                    print ("\nRescale is now at ",map["rescale"])
                     with PIL.Image.open(map["img"]) as img:
                         if map["height"] != img.height or map["width"] != img.width:
-                            map["rescale"] = (
+                            print("\n\nMAP IS {}x{},\nIMG IS: {}x{}\n\n".format(
+                                 map["width"],map["height"],
+                                 img.width,img.height))
+                            rescale = (
                                 img.width / map["width"]
                                 if map["width"] >= map["height"]
                                 else img.height / map["height"]
                             )
-                            map["width"] = round(map["width"]*map["rescale"])
-                            map["height"] = round(map["height"]*map["rescale"])
+                            map["width"] = round(map["width"]*rescale)
+                            map["height"] = round(map["height"]*rescale)
+                            map["rescale"] *= rescale
+                    print ("\nRescale is now at ",map["rescale"])
                 except Exception:
                     import traceback
 
@@ -658,6 +680,9 @@ def convert(args=args, worker=None):
         if "walls" in map and len(map["walls"]) > 0:
             for i in range(len(map["walls"])):
                 p = map["walls"][i]
+                if "sight" in p:
+                    p["sense"] = 1 if p["sight"] == 20 else 2 if p["sight"] == 10 else 0
+                    p["move"] = 1 if p["move"] == 20 else 0
                 print("\rwall {}".format(i), file=sys.stderr, end="")
                 pathlist = [
                     (p["c"][0] - map["offsetX"]) * map["rescale"],
@@ -704,6 +729,12 @@ def convert(args=args, worker=None):
                             p["move"] == 1
                             and p["sense"] == 2
                             and wType.text != "terrain"
+                        ):
+                            continue
+                        elif (
+                            p["move"] == 1
+                            and p["sense"] == 1
+                            and wType.text != "normal"
                         ):
                             continue
                         if "dir" in p:
@@ -995,6 +1026,12 @@ def convert(args=args, worker=None):
                     end="",
                 )
                 light = map["lights"][i]
+                if "config" in light:
+                    light["dim"] = light["config"]["dim"]
+                    light["bright"] = light["config"]["bright"]
+                    if "color" in light["config"]:
+                        light["tintColor"] = light["config"]["color"]
+                    light["tintAlpha"] = light["config"]["alpha"]
                 if "lightAnimation" in light and light["lightAnimation"] and "type" in light["lightAnimation"] and light["lightAnimation"]["type"] == "ghost":
                     continue
                 lightel = ET.SubElement(
@@ -1019,7 +1056,7 @@ def convert(args=args, worker=None):
                 )
                 ET.SubElement(lightel, "opacity").text = str(light["tintAlpha"])
                 ET.SubElement(lightel, "alwaysVisible").text = (
-                    "YES" if light["t"] == "u" else "NO"
+                    "YES" if "t" in light and light["t"] == "u" else "NO"
                 )
                 ET.SubElement(lightel, "x").text = str(
                     round((light["x"] - map["offsetX"]) * map["rescale"])
@@ -1669,6 +1706,9 @@ def convert(args=args, worker=None):
         elif not mod:
             print("No foundry data was found in this zip file.")
             return
+        if args.packdir and args.packname:
+            mod["name"] += " "+os.path.basename(args.packdir)
+            mod["title"] += " "+os.path.basename(args.packdir)
         print(mod["title"])
         global moduuid
         if isworld:
@@ -2117,7 +2157,7 @@ def convert(args=args, worker=None):
             folders,
         )
     )
-    journal = list(
+    journal = [] if args.noj else list(
         filter(
             lambda j: j["_id"]
             not in [a["_id"] for a in journal if "$$deleted" in a and a["$$deleted"]],
