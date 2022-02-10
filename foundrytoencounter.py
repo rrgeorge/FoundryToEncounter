@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.8"
+VERSION = "1.13.9"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1070,6 +1070,12 @@ def convert(args=args, worker=None):
             # ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
             # ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map["tokens"]:
+                if "dimLight" not in token:
+                    token["dimLight"] = token["light"]["dim"] if "light" in token else 0
+                if "brightLight" not in token:
+                    token["brightLight"] = token["light"]["bright"] if "light" in token else 0
+                if "lightAlpha" not in token:
+                    token["lightAlpha"] = token["light"]["alpha"] if "light" in token else 1
                 if 4 <= map["gridType"] <= 5:
                     tokenOffsetX = round(
                         ((2 * map["grid"] * 0.75 * token["width"]) + (map["grid"] / 2))
