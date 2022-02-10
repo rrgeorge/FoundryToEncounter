@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.9"
+VERSION = "1.13.10"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1552,9 +1552,9 @@ def convert(args=args, worker=None):
         if "download" in manifest:
 
             def progress(block_num, block_size, total_size):
-                pct = 100.00 * ((block_num * block_size) / total_size)
+                pct = "{:.2f}%".format(100.00 * ((block_num * block_size) / total_size)) if total_size > 0 else "{:.2f} mB".format((block_num*block_size)/1024.00/1024.00)
                 print(
-                    "\rDownloading module {:.2f}%".format(pct), file=sys.stderr, end=""
+                    "\rDownloading module {}".format(pct), file=sys.stderr, end=""
                 )
 
             urllib.request.urlretrieve(
@@ -2666,7 +2666,10 @@ def convert(args=args, worker=None):
             break
     if not modimage.text and len(maps) > 0:
         randomok = False
+        loopcount = len(maps)*5
         while not randomok:
+            loopcount -= 1
+            if loopcount < 0: break
             map = random.choice(maps)
             while "$$deleted" in map and mapcount > 0:
                 map = random.choice(maps)
@@ -2692,17 +2695,18 @@ def convert(args=args, worker=None):
         if args.gui:
             worker.outputLog("Generating cover image")
         print("\rGenerating cover image", file=sys.stderr, end="")
-        with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
-            if img.width <= img.height:
-                img = img.crop((0, 0, img.width, img.width))
-            else:
-                img = img.crop((0, 0, img.height, img.height))
-            if img.width > 1024:
-                img = img.resize((1024, 1024))
-            if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            img.save(os.path.join(tempdir, "module_cover" + args.jpeg))
-        modimage.text = "module_cover" + args.jpeg
+        if randomok:
+            with PIL.Image.open(map["img"] or map["tiles"][0]["img"]) as img:
+                if img.width <= img.height:
+                    img = img.crop((0, 0, img.width, img.width))
+                else:
+                    img = img.crop((0, 0, img.height, img.height))
+                if img.width > 1024:
+                    img = img.resize((1024, 1024))
+                if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                img.save(os.path.join(tempdir, "module_cover" + args.jpeg))
+            modimage.text = "module_cover" + args.jpeg
     # write to file
     sys.stderr.write("\033[K")
     if args.gui:
@@ -3061,7 +3065,7 @@ def convert(args=args, worker=None):
                     for (k, v) in d["skills"].items()
                     if ("total" in v and v["mod"] != v["total"])
                     or (
-                        "mod" in d["abilities"][v["ability"]]
+                        "mod" in d["abilities"][v["ability"]] and "mod" in v
                         and v["mod"] != d["abilities"][v["ability"]]["mod"]
                     )
                 ]
@@ -3095,7 +3099,16 @@ def convert(args=args, worker=None):
                 else ""
             )
             if "senses" in d["traits"]:
-                ET.SubElement(monster, "senses").text = d["traits"]["senses"]
+                if type(d["traits"]["senses"]) == dict:
+                    #darkvision': 60, 'blindsight': 0, 'tremorsense': 0, 'truesight': 0, 'units': 'ft', 'special': ''}
+                    senses = d["traits"]["senses"]
+                    units = senses["units"] if "units" in senses else "ft"
+                    special = ", {}".format(senses["special"]) if "special" in senses and senses["special"] else ""
+                    ET.SubElement(monster, "senses").text = ", ".join([
+                        "{} {} {}".format(k,v,units) for k,v in senses.items() if v != 0 and k not in ["units","special"]
+                        ])+special
+                else:
+                    ET.SubElement(monster, "senses").text = d["traits"]["senses"]
             ET.SubElement(monster, "passive").text = (
                 str(d["skills"]["prc"]["passive"])
                 if "skills" in d and "passive" in d["skills"]["prc"]
