@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.10"
+VERSION = "1.13.11"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -1679,6 +1679,8 @@ def convert(args=args, worker=None):
                     pack["path"] = dirpath + "/" + pack["path"]
                 if pack["path"].startswith("./") and dirpath:
                     pack["path"] = dirpath + pack["path"][1:]
+                elif pack["path"].startswith("./"):
+                    pack["path"] = pack["path"][2:]
                 try:
                     with z.open(pack["path"]) as f:
                         l = f.readline().decode("utf8")
