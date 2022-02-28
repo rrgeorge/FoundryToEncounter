@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.11"
+VERSION = "1.13.12"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -519,11 +519,11 @@ def convert(args=args, worker=None):
                     print("Rescaling {}x{} ".format(img.width, img.height), end="")
                     if args.gui:
                         worker.outputLog(
-                            " - Resizing map from {}x{} to {}x{} {}".format(
+                            " - Resizing map from {}x{} to {}x{}".format(
                                 img.width,
                                 img.height,
                                 round(img.width * scale),
-                                round(img.height * scale),
+                                round(img.height * scale)
                             )
                         )
                     img = img.resize(
