@@ -315,7 +315,7 @@ def convert(args=args, worker=None):
                     bg["y"] = round(bg["y"] - map["offsetY"])
                     if bgimg.width != bg["width"] or bgimg.height != bg["height"]:
                         bgimg = bgimg.resize((bg["width"], bg["height"]))
-                    if bg["scale"] != 1:
+                    if "scale" in bg and bg["scale"] != 1:
                         bgimg = bgimg.resize(
                             (
                                 round(bgimg.width * bg["scale"]),
@@ -653,7 +653,7 @@ def convert(args=args, worker=None):
             map["shiftY"] *= map["realign"]
         map["rescale"] *= map["realign"]
         ET.SubElement(mapentry, "gridSize").text = str(round(map["grid"]))
-        ET.SubElement(mapentry, "scale").text = str(map["realign"])
+        ET.SubElement(mapentry, "scale").text = str(map["realign"]*map["scale"])
         ET.SubElement(mapentry, "gridScale").text = str(round(map["gridDistance"]))
         ET.SubElement(mapentry, "gridUnits").text = str(map["gridUnits"])
         ET.SubElement(mapentry, "gridVisible").text = (
@@ -1572,6 +1572,7 @@ def convert(args=args, worker=None):
         items = []
         tables = []
         playlists = []
+        pdfs = []
         mod = None
         isworld = False
         for filename in z.namelist():
@@ -1661,6 +1662,8 @@ def convert(args=args, worker=None):
                         playlists.append(playlist)
                         l = f.readline().decode("utf8")
                     f.close()
+            elif os.path.splitext(filename)[1].lower() == ".pdf":
+                pdfs.append(filename)
         if not isworld and mod:
             if "EncounterPackDir" in mod:
                 args.packdir = mod["EncounterPackDir"]
@@ -2709,6 +2712,14 @@ def convert(args=args, worker=None):
                     img = img.convert("RGB")
                 img.save(os.path.join(tempdir, "module_cover" + args.jpeg))
             modimage.text = "module_cover" + args.jpeg
+    if len(pdfs) > 0:
+        for pdf in pdfs:
+            pdfref = ET.SubElement(module,"reference",{"id": str(uuid.uuid5(moduuid,pdf))})
+            ET.SubElement(pdfref,"name").text = os.path.splitext(os.path.basename(pdf))[0]
+            ET.SubElement(pdfref,"slug").text = slugify(os.path.splitext(os.path.basename(pdf))[0])
+            ET.SubElement(pdfref,"reference").text = urllib.parse.quote(os.path.relpath(os.path.join(moduletmp,mod["name"],pdf),tempdir))
+            print(moduletmp)
+            print(tempdir)
     # write to file
     sys.stderr.write("\033[K")
     if args.gui:
