@@ -24,7 +24,7 @@ import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
 
-VERSION = "1.13.12"
+VERSION = "1.13.13"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
@@ -115,6 +115,14 @@ parser.add_argument(
     default=False,
     const=True,
     help="use asset path for pack name",
+)
+parser.add_argument(
+    "-p512",
+    dest="p512",
+    action="store_const",
+    default=False,
+    const=True,
+    help="scale pack assets to maximum of 512x512",
 )
 parser.add_argument(
     "-c",
@@ -1070,6 +1078,8 @@ def convert(args=args, worker=None):
             # ET.SubElement(encentry,'name').text = map['name'] + " Encounter"
             # ET.SubElement(encentry,'slug').text = slugify(map['name'] + " Encounter")
             for token in map["tokens"]:
+                if "name" not in token:
+                    token["name"] = "Unknown"
                 if "dimLight" not in token:
                     token["dimLight"] = token["light"]["dim"] if "light" in token else 0
                 if "brightLight" not in token:
@@ -1119,7 +1129,7 @@ def convert(args=args, worker=None):
                     + tokenOffsetY
                 )
 
-                if os.path.exists(token["img"]):
+                if os.path.exists(urllib.parse.unquote(token["img"])):
                     tokenasset = ET.SubElement(
                         tokenel,
                         "asset",
@@ -1134,7 +1144,7 @@ def convert(args=args, worker=None):
                     )
                     ET.SubElement(tokenasset, "name").text = token["name"]
                     ET.SubElement(tokenasset, "type").text = "image"
-                    ET.SubElement(tokenasset, "resource").text = token["img"]
+                    ET.SubElement(tokenasset, "resource").text = urllib.parse.unquote(token["img"])
                 ET.SubElement(tokenel, "hidden").text = (
                     "YES" if token["hidden"] else "NO"
                 )
@@ -1401,14 +1411,20 @@ def convert(args=args, worker=None):
         if "notes" in map and len(map["notes"]) > 0:
             for n in map["notes"]:
                 marker = ET.SubElement(mapentry, "marker")
-                ET.SubElement(marker, "name").text = next(
-                    (
-                        j["name"]
-                        for (i, j) in enumerate(journal)
-                        if "name" in j and j["_id"] == n["entryId"]
-                    ),
-                    None,
-                )
+                def getJournal():
+                    for j in journal:
+                        if j["_id"]==n["entryId"]:
+                            return j
+                    if "text" not in n:
+                        print("No text")
+                        print(n)
+                        return None
+                    for j in journal:
+                        if j["name"]==n["text"]:
+                            return j
+                    return None
+                noteLink = getJournal()
+                ET.SubElement(marker, "name").text = n["text"] if "text" in n else noteLink["name"] if noteLink else ""
                 ET.SubElement(marker, "label").text = "📖"
                 ET.SubElement(marker, "shape").text = "circle"
                 ET.SubElement(marker, "x").text = str(
@@ -1421,7 +1437,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(
                     marker,
                     "content",
-                    {"ref": "/page/{}".format(str(uuid.uuid5(moduuid, n["entryId"])))},
+                    {"ref": "/page/{}".format(str(uuid.uuid5(moduuid, noteLink["_id"] if noteLink else n["entryId"])))},
                 )
         if "sounds" in map and len(map["sounds"]) > 0:
             for s in map["sounds"]:
@@ -1585,6 +1601,10 @@ def convert(args=args, worker=None):
                 dirpath = os.path.dirname(filename)
                 with z.open(filename) as f:
                     mod = json.load(f)
+            elif not mod and os.path.basename(filename) == "system.json":
+                dirpath = os.path.dirname(filename)
+                with z.open(filename) as f:
+                    mod = json.load(f)
             elif (
                 os.path.basename(os.path.dirname(filename)) == "data"
                 and os.path.basename(filename) == "folders.db"
@@ -1677,6 +1697,8 @@ def convert(args=args, worker=None):
                     pack["path"][1:] if os.path.isabs(pack["path"]) else pack["path"]
                 )
                 if any(x.startswith("{}/".format(mod["name"])) for x in z.namelist()):
+                    if pack["path"].startswith("./"):
+                        pack["path"] = pack["path"][2:]
                     pack["path"] = mod["name"] + "/" + pack["path"]
                 if dirpath and not pack["path"].startswith("{}/".format(dirpath)) and any(x.startswith("{}/".format(dirpath)) for x in z.namelist()):
                     pack["path"] = dirpath + "/" + pack["path"]
@@ -1686,13 +1708,24 @@ def convert(args=args, worker=None):
                     pack["path"] = pack["path"][2:]
                 try:
                     with z.open(pack["path"]) as f:
+                        if "label" in pack:
+                            folders.append({
+                                "_id": slugify(pack["label"]),
+                                "type": pack["entity"],
+                                "name": pack["label"],
+                                "parent": None
+                                })
                         l = f.readline().decode("utf8")
                         while l:
                             if pack["entity"] == "JournalEntry":
                                 jrn = json.loads(l)
+                                if not jrn["folder"]:
+                                    jrn["folder"] = slugify(pack["label"])
                                 journal.append(jrn)
                             elif pack["entity"] == "Scene":
                                 scene = json.loads(l)
+                                if not scene["folder"]:
+                                    scene["folder"] = slugify(pack["label"])
                                 maps.append(scene)
                             elif pack["entity"] == "Actor":
                                 actor = json.loads(l)
@@ -1778,13 +1811,6 @@ def convert(args=args, worker=None):
     maxorder = 0
     sort = 0
     if args.packdir:
-        journal.clear()
-        maps.clear()
-        folders.clear()
-        actors.clear()
-        items.clear()
-        tables.clear()
-        playlists.clear()
         packdir = os.path.join(tempdir, "packdir")
         os.mkdir(packdir)
         packroot = [
@@ -1792,6 +1818,43 @@ def convert(args=args, worker=None):
             for folder in os.listdir(args.packdir)
             if os.path.isdir(os.path.join(args.packdir, folder))
         ]
+        for map in maps:
+            if "$$deleted" in map and map["$$deleted"]:
+                continue
+            if not modimage.text and map["name"].lower() in args.covernames:
+                if args.gui:
+                    worker.outputLog("Generating cover image")
+                print("\rGenerating cover image", file=sys.stderr, end="")
+                if not os.path.exists(
+                    urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
+                ):
+                    if os.path.exists(
+                        os.path.splitext(
+                            urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
+                        )[0]
+                        + args.jpeg
+                    ):
+                        map["img"] = os.path.splitext(map["img"])[0] + args.jpeg
+                with PIL.Image.open(
+                    urllib.parse.unquote(map["img"] or map["tiles"][0]["img"])
+                ) as img:
+                    if img.width <= img.height:
+                        img = img.crop((0, 0, img.width, img.width))
+                    else:
+                        img = img.crop((0, 0, img.height, img.height))
+                    if img.width > 1024:
+                        img = img.resize((1024, 1024))
+                    if args.jpeg == ".jpg" and img.mode in ("RGBA", "P"):
+                        img = img.convert("RGB")
+                    img.save(os.path.join(packdir, "module_cover" + args.jpeg))
+                modimage.text = "module_cover" + args.jpeg
+        journal.clear()
+        maps.clear()
+        folders.clear()
+        actors.clear()
+        items.clear()
+        tables.clear()
+        playlists.clear()
         packroot.append(".")
         pos = 0.00
         if sys.platform == "win32":
@@ -1886,13 +1949,14 @@ def convert(args=args, worker=None):
                 ET.SubElement(asset, "name").text = os.path.splitext(
                     os.path.basename(image)
                 )[0]
+                tagsEl = ET.SubElement(asset, "tags")
                 tags = re.search(
                     r"(.*)_(?:tiny|small|medium|large|huge)(?:plus)?_.*",
                     os.path.splitext(os.path.basename(image))[0],
                     re.I,
                 )
                 if tags:
-                    ET.SubElement(asset, "tags").text = (
+                    tagsEl.text = (
                         tags.group(1).replace("_", " ").strip()
                     )
                 else:
@@ -1903,9 +1967,11 @@ def convert(args=args, worker=None):
                     )
                     if tags:
                         tag = tags.group(3) or tags.group(2)
-                        ET.SubElement(asset, "tags").text = tag.replace(
+                        tagsEl.text = tag.replace(
                             "_", " "
                         ).strip()
+                if (os.path.basename(os.path.split(image)[0]) not in [mod["name"],os.path.basename(dirpath)]):
+                    tagsEl.text += ","+os.path.basename(os.path.split(image)[0])
                 imgext = os.path.splitext(os.path.basename(image))[1]
                 if imgext == ".webm":
                     try:
@@ -2119,6 +2185,16 @@ def convert(args=args, worker=None):
                                 4095 / img.width
                                 if img.width >= img.height
                                 else 4095 / img.height
+                            )
+                            img = img.resize(
+                                (round(img.width * scale), round(img.height * scale))
+                            )
+                            img.save(os.path.join(tempdir, image))
+                        if (img.width > 512 or img.height > 512) and args.p512:
+                            scale = (
+                                512 / img.width
+                                if img.width >= img.height
+                                else 512 / img.height
                             )
                             img = img.resize(
                                 (round(img.width * scale), round(img.height * scale))
@@ -2587,7 +2663,7 @@ def convert(args=args, worker=None):
                         progress,
                     )
                 else:
-                    shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),os.path.basename(media["url"])),os.path.join(tempdir,os.path.basename(media["url"]).lower()))
+                    shutil.copy(os.path.join(os.path.join(moduletmp, mod["name"]),media["url"]),os.path.join(tempdir,os.path.basename(media["url"]).lower()))
                 if args.packdir:
                     shutil.copy(os.path.join(tempdir,os.path.basename(media["url"].lower())),os.path.join(packdir,os.path.basename(media["url"]).lower()))
                 modimage.text = os.path.basename(media["url"]).lower()
@@ -2611,7 +2687,7 @@ def convert(args=args, worker=None):
         for map in maps:
             if "$$deleted" in map and map["$$deleted"]:
                 continue
-            if not modimage.text and map["name"].lower() in args.covernames:
+            if not modimage.text and (map["name"].lower() in args.covernames or re.match(r'[0-9\.]+[ ]*' + re.escape(mod["title"]), map["name"])):
                 if args.gui:
                     worker.outputLog("Generating cover image")
                 print("\rGenerating cover image", file=sys.stderr, end="")
@@ -2718,8 +2794,6 @@ def convert(args=args, worker=None):
             ET.SubElement(pdfref,"name").text = os.path.splitext(os.path.basename(pdf))[0]
             ET.SubElement(pdfref,"slug").text = slugify(os.path.splitext(os.path.basename(pdf))[0])
             ET.SubElement(pdfref,"reference").text = urllib.parse.quote(os.path.relpath(os.path.join(moduletmp,mod["name"],pdf),tempdir))
-            print(moduletmp)
-            print(tempdir)
     # write to file
     sys.stderr.write("\033[K")
     if args.gui:
@@ -2829,34 +2903,37 @@ def convert(args=args, worker=None):
                 ET.SubElement(spell, "school").text = (
                     schools[d["school"]] if d["school"] in schools else d["school"]
                 )
-                ET.SubElement(spell, "ritual").text = (
-                    "YES" if d["components"]["ritual"] else "NO"
-                )
+                if "components" in d:
+                    ET.SubElement(spell, "ritual").text = (
+                        "YES" if d["components"]["ritual"] else "NO"
+                    )
                 ET.SubElement(spell, "time").text = "{} {}".format(
                     d["activation"]["cost"], d["activation"]["type"]
                 )
-                ET.SubElement(spell, "range").text = "{} {}".format(
-                    "{}/{}".format(d["range"]["value"], d["range"]["long"])
-                    if d["range"]["long"]
-                    else d["range"]["value"],
-                    d["range"]["units"]
-                )
+                if "range" in d and "value" in d["range"] and "long" in d["range"]:
+                    ET.SubElement(spell, "range").text = "{} {}".format(
+                        "{}/{}".format(d["range"]["value"], d["range"]["long"])
+                        if d["range"]["long"]
+                        else d["range"]["value"],
+                        d["range"]["units"]
+                    )
                 components = []
-                for component in d["components"].keys():
-                    if component in ["value", "ritual", "concentration"]:
-                        continue
-                    elif d["components"][component]:
-                        comp = component[0].upper()
-                        if (
-                            comp == "M"
-                            and "value" in d["materials"]
-                            and d["materials"]["value"]
-                        ):
-                            if d["materials"]["consumed"]:
-                                d["materials"]["value"] += ", which the spell consumes"
-                            comp += " ({})".format(d["materials"]["value"])
-                        components.append(comp)
-                ET.SubElement(spell, "components").text = ",".join(components)
+                if "components" in d:
+                    for component in d["components"].keys():
+                        if component in ["value", "ritual", "concentration"]:
+                            continue
+                        elif d["components"][component]:
+                            comp = component[0].upper()
+                            if (
+                                comp == "M"
+                                and "value" in d["materials"]
+                                and d["materials"]["value"]
+                            ):
+                                if d["materials"]["consumed"]:
+                                    d["materials"]["value"] += ", which the spell consumes"
+                                comp += " ({})".format(d["materials"]["value"])
+                            components.append(comp)
+                    ET.SubElement(spell, "components").text = ",".join(components)
                 ET.SubElement(spell, "duration").text = (
                     ("Concentration" if d["components"]["concentration"] else "")
                     + "Instantaneous"
@@ -2913,7 +2990,7 @@ def convert(args=args, worker=None):
                 else:
                     print("Dont know armor type:", d["armor"]["type"])
                     ET.SubElement(item, "type").text = "AA"
-                if d["armor"]["value"]:
+                if "value" in d["armor"]:
                     ET.SubElement(item, "ac").text = str(d["armor"]["value"])
             elif i["type"] == "weapon":
                 if d["weaponType"] in ["simpleR", "martialR"]:
@@ -2953,17 +3030,22 @@ def convert(args=args, worker=None):
                 ET.SubElement(item, "property").text = ",".join(props)
                 if d["damage"]["parts"]:
                     ET.SubElement(item, "dmg1").text = re.sub(
-                        r"[ ]?\+[ ]?@mod", r"", d["damage"]["parts"][0][0], re.I
+                        r"[ ]?\+[ ]?@mod", r"", d["damage"]["parts"][0]["formula"] if "formula" in d["damage"]["parts"][0] else d["damage"]["parts"][0][0], re.I
                     )
-                    if d["damage"]["parts"][0][1]:
+                    if "types" in d["damage"]["parts"][0]:
+                        for k,v in d["damage"]["parts"][0]["types"].items():
+                            if v:
+                                ET.SubElement(item, "dmgType").text = k.upper()
+                                break
+                    elif d["damage"]["parts"][0][1]:
                         ET.SubElement(item, "dmgType").text = d["damage"]["parts"][0][
                             1
                         ][0].upper()
-                if d["damage"]["versatile"]:
+                if "versitile" in d["damage"] and d["damage"]["versatile"]:
                     ET.SubElement(item, "dmg2").text = re.sub(
                         r"\[\[a-z]*\]?[ ]?\+[ ]?(@mod)?", r"", d["damage"]["versatile"], re.I
                     )
-                if "range" in d:
+                if "range" in d and "value" in d["range"] and "long" in d["range"]:
                     ET.SubElement(item, "range").text = "{} {}".format(
                         "{}/{}".format(d["range"]["value"], d["range"]["long"])
                         if d["range"]["long"]
@@ -2974,7 +3056,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(item, "type").text = "G"
             else:
                 print("Dont know item type", i["type"])
-            ET.SubElement(item, "text").text = fixHTMLContent(d["description"]["value"])
+            ET.SubElement(item, "text").text = fixHTMLContent(d["description"]["value"] or "")
             if i["img"]:
                 i["img"] = urllib.parse.unquote(i["img"])
             if i["img"] and os.path.exists(i["img"]):
@@ -3021,7 +3103,8 @@ def convert(args=args, worker=None):
                     ET.SubElement(monster, "type").text = d["details"]["type"]
             if "alignment" in d["details"]:
                 ET.SubElement(monster, "alignment").text = d["details"]["alignment"]
-            ET.SubElement(monster, "ac").text = str(d["attributes"]["ac"]["value"] if "value" in d["attributes"]["ac"] else d["attributes"]["ac"]["flat"])
+            if "ac"in d["attributes"]:
+                ET.SubElement(monster, "ac").text = str(d["attributes"]["ac"]["value"] if "value" in d["attributes"]["ac"] else d["attributes"]["ac"]["flat"])
             if "formula" in d["attributes"]["hp"] and d["attributes"]["hp"]["formula"]:
                 ET.SubElement(monster, "hp").text = "{} ({})".format(
                     d["attributes"]["hp"]["value"], d["attributes"]["hp"]["formula"]
@@ -3031,12 +3114,20 @@ def convert(args=args, worker=None):
                     d["attributes"]["hp"]["value"]
                 )
             if "speed" in d["attributes"] and "_deprecated" not in d["attributes"]["speed"]:
-                if d["attributes"]["speed"]["special"]:
-                    ET.SubElement(monster, "speed").text = (
-                        d["attributes"]["speed"]["value"]
-                        + ", "
-                        + d["attributes"]["speed"]["special"]
-                    )
+                if "value" not in d["attributes"]["speed"]:
+                    print(d["attributes"]["speed"])
+                    speed = ""
+                    for k,v in d["attributes"]["speed"].items():
+                        if k.lower() == "special":
+                            continue
+                        speed += "{} {}"
+
+                elif "special" in d["attributes"]["speed"]:
+                        ET.SubElement(monster, "speed").text = (
+                            d["attributes"]["speed"]["value"]
+                            + ", "
+                            + d["attributes"]["speed"]["special"]
+                        )
                 else:
                     ET.SubElement(monster, "speed").text = d["attributes"]["speed"][
                         "value"
@@ -3207,7 +3298,7 @@ def convert(args=args, worker=None):
                         )
                     )
                     os.remove(a["token"]["img"])
-                    ET.SubElement(monster, "image").text = (
+                    ET.SubElement(monster, "token").text = (
                         "token_"
                         + slugify(a["name"])
                         + "_"
@@ -3746,6 +3837,9 @@ if args.gui:
                                 mod = json.load(f)
                             isworld = True
                         elif not mod and os.path.basename(filename) == "module.json":
+                            with z.open(filename) as f:
+                                mod = json.load(f)
+                        elif not mod and os.path.basename(filename) == "system.json":
                             with z.open(filename) as f:
                                 mod = json.load(f)
                 if mod:
