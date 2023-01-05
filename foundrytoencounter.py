@@ -322,6 +322,7 @@ def convert(args=args, worker=None):
                     bg["x"] = round(bg["x"] - map["offsetX"])
                     bg["y"] = round(bg["y"] - map["offsetY"])
                     if bgimg.width != bg["width"] or bgimg.height != bg["height"]:
+                        print(bg["img"])
                         bgimg = bgimg.resize((bg["width"], bg["height"]))
                     if "scale" in bg and bg["scale"] != 1:
                         bgimg = bgimg.resize(
@@ -1211,7 +1212,7 @@ def convert(args=args, worker=None):
                         ET.SubElement(tokenel, "reference").text = "/monster/{}".format(
                             uuid.uuid5(moduuid, a["_id"])
                             if args.compendium
-                            else slugify(a["name"])
+                            else slugify(", ".join(a["name"]) if type(a["name"]) == list else a["name"])
                         )
                         actorLinked = True
                         break
@@ -2342,7 +2343,7 @@ def convert(args=args, worker=None):
                     return '<a href="/monster/{}">{}</a>'.format(
                         uuid.uuid5(moduuid, a["_id"])
                         if args.compendium
-                        else slugify(a["name"]),
+                        else slugify(", ".join(a["name"]) if type(a["name"]) == list else a["name"]),
                         m.group(3) or a["name"],
                         m.group(3),
                     )
@@ -2687,7 +2688,7 @@ def convert(args=args, worker=None):
         for map in maps:
             if "$$deleted" in map and map["$$deleted"]:
                 continue
-            if not modimage.text and (map["name"].lower() in args.covernames or re.match(r'[0-9\.]+[ ]*' + re.escape(mod["title"]), map["name"])):
+            if not modimage.text and (map["name"].lower() in args.covernames or re.match(r'[0-9\.]+[ ]*' + re.escape(mod["title"].lower()), map["name"].lower()) or re.match(r'.* - blueprint', map["name"].lower())):
                 if args.gui:
                     worker.outputLog("Generating cover image")
                 print("\rGenerating cover image", file=sys.stderr, end="")
