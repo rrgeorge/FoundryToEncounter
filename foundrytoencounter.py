@@ -283,26 +283,42 @@ def fixRoll(m):
 
 def convert(args=args, worker=None):
     def createMap(map, mapgroup):
+        if type(map["grid"]) == dict:
+            mapgrid = map["grid"]
+        else:
+            mapgrid = {
+                "type": map["gridType"],
+                "size": map["grid"],
+                "color": map["gridColor"],
+                "alpha": map["gridAlpha"],
+                "distance": map["gridDistance"],
+                "units": map["gridUnits"]
+            }
+        mapgrid["osize"] = mapgrid["size"]
+        if "background" in map and "img" not in map:
+            map["img"] = map["background"]["src"]
+            map["shiftX"] = map["background"]['offsetX']
+            map["shiftY"] = map["background"]['offsetY']
         if "padding" in map:
             map["offsetX"] = (
-                math.ceil((map["padding"] * map["width"]) / map["grid"]) * map["grid"]
+                math.ceil((map["padding"] * map["width"]) / mapgrid["size"]) * mapgrid["size"]
             )
             map["offsetY"] = (
-                math.ceil((map["padding"] * map["height"]) / map["grid"]) * map["grid"]
+                math.ceil((map["padding"] * map["height"]) / mapgrid["size"]) * mapgrid["size"]
             )
         else:
             map["offsetX"] = (
                 map["width"]
-                + math.ceil(0.5 * map["width"] / (map["grid"] * 2)) * (map["grid"] * 2)
+                + math.ceil(0.5 * map["width"] / (mapgrid["size"] * 2)) * (mapgrid["size"] * 2)
                 - map["width"]
             ) * 0.5
             map["offsetY"] = (
                 map["height"]
-                + math.ceil(0.5 * map["height"] / (map["grid"] * 2)) * (map["grid"] * 2)
+                + math.ceil(0.5 * map["height"] / (mapgrid["size"] * 2)) * (mapgrid["size"] * 2)
                 - map["height"]
             ) * 0.5
-        map["offsetX"] -= map["shiftX"]
-        map["offsetY"] -= map["shiftY"]
+        map["offsetX"] -= map["shiftX"] if map["shiftX"] else map["background"]["offsetX"] if "background" in map else 0
+        map["offsetY"] -= map["shiftY"] if map["shiftY"] else map["background"]["offsetY"] if "background" in map else 0
         mapbaseslug = slugify(map["name"])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
         slugs.append(mapslug)
@@ -636,46 +652,46 @@ def convert(args=args, worker=None):
                     os.remove(map["thumb"])
                 else:
                     ET.SubElement(mapentry, "snapshot").text = map["thumb"]
-        map["grid"] *= map["rescale"]
+        mapgrid["size"] *= map["rescale"]
         map["shiftX"] *= map["rescale"]
         map["shiftY"] *= map["rescale"]
-        if round(map["grid"]) != map["grid"]:
-            map["realign"] = round(map["grid"]) / map["grid"]
-        elif map["gridType"] > 1 and round(map["grid"] / 2.0) != (map["grid"] / 2.0):
-            map["realign"] = round(map["grid"] / 2.0) / (map["grid"] / 2.0)
+        if round(mapgrid["size"]) != mapgrid["size"]:
+            map["realign"] = round(mapgrid["size"]) / mapgrid["size"]
+        elif mapgrid["type"] > 1 and round(mapgrid["size"] / 2.0) != (mapgrid["size"] / 2.0):
+            map["realign"] = round(mapgrid["size"] / 2.0) / (mapgrid["size"] / 2.0)
         else:
             map["realign"] = 1.0
-        if map["gridType"] > 1:
-            map["grid"] = round(map["grid"] / 2.0)
-            if 2 <= map["gridType"] <= 3:
-                if map["gridType"] == 2:
-                    map["shiftY"] += map["grid"]
+        if mapgrid["type"] > 1:
+            mapgrid["size"] = round(mapgrid["size"] / 2.0)
+            if 2 <= mapgrid["type"] <= 3:
+                if mapgrid["type"] == 2:
+                    map["shiftY"] += mapgrid["size"]
                 else:
-                    map["shiftY"] -= map["grid"] / 2.0
-            elif 4 <= map["gridType"] <= 5:
-                map["shiftY"] += map["grid"] / 2.0
-                if map["gridType"] == 4:
-                    map["shiftX"] -= map["grid"]
+                    map["shiftY"] -= mapgrid["size"] / 2.0
+            elif 4 <= mapgrid["type"] <= 5:
+                map["shiftY"] += mapgrid["size"] / 2.0
+                if mapgrid["type"] == 4:
+                    map["shiftX"] -= mapgrid["size"]
                 else:
-                    map["shiftX"] += map["grid"] / 2.0
+                    map["shiftX"] += mapgrid["size"] / 2.0
             map["shiftX"] *= map["realign"]
             map["shiftY"] *= map["realign"]
         map["rescale"] *= map["realign"]
-        ET.SubElement(mapentry, "gridSize").text = str(round(map["grid"]))
+        ET.SubElement(mapentry, "gridSize").text = str(round(mapgrid["size"]))
         ET.SubElement(mapentry, "scale").text = str(map["realign"]*map["scale"])
-        ET.SubElement(mapentry, "gridScale").text = str(round(map["gridDistance"]))
-        ET.SubElement(mapentry, "gridUnits").text = str(map["gridUnits"])
+        ET.SubElement(mapentry, "gridScale").text = str(round(mapgrid["distance"]))
+        ET.SubElement(mapentry, "gridUnits").text = str(mapgrid["units"])
         ET.SubElement(mapentry, "gridVisible").text = (
-            "NO" if map["gridType"] == 0 else "YES" if map["gridAlpha"] > 0 else "NO"
+            "NO" if mapgrid["type"] == 0 else "YES" if mapgrid["alpha"] > 0 else "NO"
         )
-        ET.SubElement(mapentry, "gridColor").text = map["gridColor"]
-        ET.SubElement(mapentry, "gridOffsetX").text = str(round(map["shiftX"]))
-        ET.SubElement(mapentry, "gridOffsetY").text = str(round(map["shiftY"]))
+        ET.SubElement(mapentry, "gridColor").text = mapgrid["color"]
+        ET.SubElement(mapentry, "gridOffsetX").text = str(round(map["shiftX"] if map["shiftX"] else map["background"]["offsetX"] if "background" in map else 0))
+        ET.SubElement(mapentry, "gridOffsetY").text = str(round(map["shiftY"] if map["shiftY"] else map["background"]["offsetY"] if "background" in map else 0))
         ET.SubElement(mapentry, "gridType").text = (
             "hexFlat"
-            if 4 <= map["gridType"] <= 5
+            if 4 <= mapgrid["type"] <= 5
             else "hexPointy"
-            if 2 <= map["gridType"] <= 3
+            if 2 <= mapgrid["type"] <= 3
             else "square"
         )
         ET.SubElement(mapentry, "lineOfSight").text = (
@@ -810,6 +826,9 @@ def convert(args=args, worker=None):
         if "tiles" in map:
             for i in range(len(map["tiles"])):
                 image = map["tiles"][i]
+                if "img" not in image and "texture" in image:
+                    texture = image["texture"]
+                    image["img"] = texture["src"]
                 if "scale" not in image:
                     image["scale"] = 1
                 image["img"] = urllib.parse.unquote(image["img"])
@@ -1087,30 +1106,30 @@ def convert(args=args, worker=None):
                     token["brightLight"] = token["light"]["bright"] if "light" in token else 0
                 if "lightAlpha" not in token:
                     token["lightAlpha"] = token["light"]["alpha"] if "light" in token else 1
-                if 4 <= map["gridType"] <= 5:
+                if 4 <= mapgrid["type"] <= 5:
                     tokenOffsetX = round(
-                        ((2 * map["grid"] * 0.75 * token["width"]) + (map["grid"] / 2))
+                        ((2 * mapgrid["size"] * 0.75 * token["width"]) + (mapgrid["size"] / 2))
                         / 2
                     )
                     tokenOffsetY = round(
-                        (math.sqrt(3) * map["grid"] * token["height"]) / 2
+                        (math.sqrt(3) * mapgrid["size"] * token["height"]) / 2
                     )
-                    if map["gridType"] == 5:
-                        tokenOffsetX += round(map["grid"])
+                    if mapgrid["type"] == 5:
+                        tokenOffsetX += round(mapgrid["size"])
                     token["scale"] /= 0.8
-                elif 2 <= map["gridType"] <= 3:
+                elif 2 <= mapgrid["type"] <= 3:
                     tokenOffsetX = round(
-                        (math.sqrt(3) * map["grid"] * token["width"]) / 2
+                        (math.sqrt(3) * mapgrid["size"] * token["width"]) / 2
                     )
                     tokenOffsetY = round(
-                        ((2 * map["grid"] * 0.75 * token["height"]) + (map["grid"] / 2))
+                        ((2 * mapgrid["size"] * 0.75 * token["height"]) + (mapgrid["size"] / 2))
                         / 2
                     )
-                    if map["gridType"] == 3:
-                        tokenOffsetX += round(map["grid"])
+                    if mapgrid["type"] == 3:
+                        tokenOffsetX += round(mapgrid["size"])
                 else:
-                    tokenOffsetX = round(token["width"] * (map["grid"] / 2))
-                    tokenOffsetY = round(token["height"] * (map["grid"] / 2))
+                    tokenOffsetX = round(token["width"] * (mapgrid["size"] / 2))
+                    tokenOffsetY = round(token["height"] * (mapgrid["size"] / 2))
                 tokenel = ET.SubElement(
                     mapentry,
                     "token",
@@ -1686,6 +1705,8 @@ def convert(args=args, worker=None):
             elif os.path.splitext(filename)[1].lower() == ".pdf":
                 pdfs.append(filename)
         if not isworld and mod:
+            if "name" not in mod and "id" in mod:
+                mod["name"] = mod["id"]
             if "EncounterPackDir" in mod:
                 args.packdir = mod["EncounterPackDir"]
             if "packs" not in mod:
@@ -1720,12 +1741,12 @@ def convert(args=args, worker=None):
                         while l:
                             if pack["entity"] == "JournalEntry":
                                 jrn = json.loads(l)
-                                if not jrn["folder"]:
+                                if "folder" not in jrn and not jrn["folder"]:
                                     jrn["folder"] = slugify(pack["label"])
                                 journal.append(jrn)
                             elif pack["entity"] == "Scene":
                                 scene = json.loads(l)
-                                if not scene["folder"]:
+                                if "folder" not in scene or not scene["folder"]:
                                     scene["folder"] = slugify(pack["label"])
                                 maps.append(scene)
                             elif pack["entity"] == "Actor":
@@ -2715,7 +2736,7 @@ def convert(args=args, worker=None):
                         img = img.convert("RGB")
                     img.save(os.path.join(tempdir, "module_cover" + args.jpeg))
                 modimage.text = "module_cover" + args.jpeg
-            if not map["img"] and len(map["tiles"]) == 0:
+            if "background" not in map and not map["img"] and len(map["tiles"]) == 0:
                 continue
             mapcount += 1
             sys.stderr.write("\033[K")
