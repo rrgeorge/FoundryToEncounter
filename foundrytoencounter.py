@@ -28,7 +28,8 @@ VERSION = "1.13.14"
 
 zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
-
+global ffmpeg_path
+global ffprobe_path
 try:
     ffmpeg_path = shutil.which("ffmpeg") or shutil.which("ffmpeg", path=os.defpath)
     ffprobe_path = shutil.which("ffprobe") or shutil.which("ffprobe", path=os.defpath)
@@ -41,10 +42,10 @@ try:
         ffmpeg_path = os.path.abspath(ffmpeg_path)
     if ffprobe_path:
         ffprobe_path = os.path.abspath(ffprobe_path)
-except Exception:
+except Exception as e:
+    print(e)
     ffmpeg_path = None
     ffprobe_path = None
-
 """For pyinstaller -w"""
 startupinfo = None
 if sys.platform == "win32":
@@ -3926,6 +3927,13 @@ if args.gui:
             self.outputFile = fileName[0]
             if not fileName[0]:
                 return
+
+            settings = QSettings()
+            self.settings = settings
+            global ffmpeg_path
+            global ffprobe_path
+            ffmpeg_path = settings.value("ffmpeg_path", None, type=str)
+            ffprobe_path = settings.value("ffprobe_path", None, type=str)
             args.output = self.outputFile
             self.output.setVisible(True)
             self.output.clear()
