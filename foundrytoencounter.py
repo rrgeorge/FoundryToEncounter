@@ -23,10 +23,10 @@ import magic
 import subprocess
 from google.protobuf import text_format
 import fonts_public_pb2
+from spritesheet import spritesheet
 
-VERSION = "1.13.14"
+VERSION = "1.13.14b"
 
-zipfile.ZIP64_LIMIT = 4294967294
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
 global ffmpeg_path
 global ffprobe_path
@@ -46,6 +46,8 @@ except Exception as e:
     print(e)
     ffmpeg_path = None
     ffprobe_path = None
+print(ffmpeg_path)
+print(ffprobe_path)
 """For pyinstaller -w"""
 startupinfo = None
 if sys.platform == "win32":
@@ -56,6 +58,8 @@ tempdir = None
 
 
 def ffprobe(video: str) -> dict:
+    print("Using ffprobe from:")
+    print(ffprobe_path)
     process = subprocess.Popen(
         [
             ffprobe_path,
@@ -171,6 +175,14 @@ parser.add_argument(
     const=True,
     default=False,
     help="Skip journals",
+)
+parser.add_argument(
+    "-spritesheets",
+    dest="spritesheets",
+    action="store_const",
+    default=False,
+    const=True,
+    help="use spritesheets instead of animated webp",
 )
 parserg = parser.add_mutually_exclusive_group()
 parserg.add_argument(
@@ -880,89 +892,101 @@ def convert(args=args, worker=None):
                 if imgext == ".webm":
                     try:
                         if os.path.exists(image["img"]):
-                            if args.gui:
-                                worker.outputLog(
-                                    " - Converting webm tile to animated webp"
-                                )
                             probe = ffprobe(image["img"])
-                            duration = int(probe["nb_read_frames"])
-                            if probe["codec_name"] != "vp9":
-                                ffp = subprocess.Popen(
-                                    [
-                                        ffmpeg_path,
-                                        "-v",
-                                        "error",
-                                        "-vcodec",
-                                        "libvpx",
-                                        "-progress",
-                                        "ffmpeg.log",
-                                        "-i",
-                                        image["img"],
-                                        "-loop",
-                                        "0",
-                                        image["img"] + ".webp",
-                                    ],
-                                    startupinfo=startupinfo,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL,
-                                )
+                            if args.spritesheets:
+                                if args.gui:
+                                    worker.outputLog(
+                                        " - Converting webm tile to spritesheet"
+                                    )
+                                (sprites, duration, framewidth, frameheight) = spritesheet(ffmpeg_path, probe, image["img"], worker)
+                                ET.SubElement(asset, 'type').text = "spriteSheet"
+                                ET.SubElement(asset, 'frameWidth').text = str(framewidth)
+                                ET.SubElement(asset, 'frameHeight').text = str(frameheight)
+                                ET.SubElement(asset, 'resource').text = os.path.basename(sprites)
+                                ET.SubElement(asset, 'duration').text = str(duration)
                             else:
-                                ffp = subprocess.Popen(
-                                    [
-                                        ffmpeg_path,
-                                        "-v",
-                                        "error",
-                                        "-vcodec",
-                                        "libvpx-vp9",
-                                        "-progress",
-                                        "ffmpeg.log",
-                                        "-i",
-                                        image["img"],
-                                        "-loop",
-                                        "0",
-                                        image["img"] + ".webp",
-                                    ],
-                                    startupinfo=startupinfo,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL,
-                                )
+                                if args.gui:
+                                    worker.outputLog(
+                                        " - Converting webm tile to animated webp"
+                                    )
+                                duration = int(probe["nb_read_frames"])
+                                if probe["codec_name"] != "vp9":
+                                    ffp = subprocess.Popen(
+                                        [
+                                            ffmpeg_path,
+                                            "-v",
+                                            "error",
+                                            "-vcodec",
+                                            "libvpx",
+                                            "-progress",
+                                            "ffmpeg.log",
+                                            "-i",
+                                            image["img"],
+                                            "-loop",
+                                            "0",
+                                            image["img"] + ".webp",
+                                        ],
+                                        startupinfo=startupinfo,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL,
+                                    )
+                                else:
+                                    ffp = subprocess.Popen(
+                                        [
+                                            ffmpeg_path,
+                                            "-v",
+                                            "error",
+                                            "-vcodec",
+                                            "libvpx-vp9",
+                                            "-progress",
+                                            "ffmpeg.log",
+                                            "-i",
+                                            image["img"],
+                                            "-loop",
+                                            "0",
+                                            image["img"] + ".webp",
+                                        ],
+                                        startupinfo=startupinfo,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL,
+                                    )
 
-                            with open("ffmpeg.log", "a+") as f:
-                                logged = False
-                                while ffp.poll() is None:
-                                    l = f.readline()
-                                    m = re.match(r"(.*?)=(.*)", l)
-                                    if m:
-                                        key = m.group(1)
-                                        val = m.group(2)
-                                        if key == "frame":
-                                            if not logged:
+                                with open("ffmpeg.log", "a+") as f:
+                                    logged = False
+                                    while ffp.poll() is None:
+                                        l = f.readline()
+                                        m = re.match(r"(.*?)=(.*)", l)
+                                        if m:
+                                            key = m.group(1)
+                                            val = m.group(2)
+                                            if key == "frame":
+                                                if not logged:
+                                                    print(
+                                                        " webm->webp:    ",
+                                                        file=sys.stderr,
+                                                        end="",
+                                                    )
+                                                    logged = True
+                                                elif pct >= 100:
+                                                    print("\b", file=sys.stderr, end="")
+                                                pos = round(float(val) * 100, 2)
+                                                pct = round(pos / duration)
                                                 print(
-                                                    " webm->webp:    ",
+                                                    "\b\b\b{:02d}%".format(pct),
                                                     file=sys.stderr,
                                                     end="",
                                                 )
-                                                logged = True
-                                            elif pct >= 100:
-                                                print("\b", file=sys.stderr, end="")
-                                            pos = round(float(val) * 100, 2)
-                                            pct = round(pos / duration)
-                                            print(
-                                                "\b\b\b{:02d}%".format(pct),
-                                                file=sys.stderr,
-                                                end="",
-                                            )
-                                            if args.gui:
-                                                worker.updateProgress(pct)
-                                            sys.stderr.flush()
-                            os.remove("ffmpeg.log")
-                        if os.path.exists(image["img"] + ".webp"):
-                            ET.SubElement(asset, "type").text = "animatedImage"
-                            ET.SubElement(asset, "resource").text = (
-                                image["img"] + ".webp"
-                            )
+                                                if args.gui:
+                                                    worker.updateProgress(pct)
+                                                sys.stderr.flush()
+                                os.remove("ffmpeg.log")
+                            if os.path.exists(image["img"] + ".webp"):
+                                ET.SubElement(asset, "type").text = "animatedImage"
+                                ET.SubElement(asset, "resource").text = (
+                                    image["img"] + ".webp"
+                                )
                         continue
                     except Exception:
                         import traceback
@@ -1999,142 +2023,157 @@ def convert(args=args, worker=None):
                 if imgext == ".webm":
                     try:
                         if os.path.exists(image):
-                            if args.gui:
-                                worker.outputLog(
-                                    " - Converting webm tile to animated webp"
-                                )
                             probe = ffprobe(image)
-                            duration = int(probe["nb_read_frames"])
-                            if probe["codec_name"] != "vp9":
-                                ffp = subprocess.Popen(
-                                    [
-                                        ffmpeg_path,
-                                        "-v",
-                                        "error",
-                                        "-vcodec",
-                                        "libvpx",
-                                        "-progress",
-                                        "ffmpeg.log",
-                                        "-i",
-                                        image,
-                                        "-loop",
-                                        "0",
-                                        image + ".webp",
-                                    ],
-                                    startupinfo=startupinfo,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL,
+                            if args.spritesheets:
+                                if args.gui:
+                                    worker.outputLog(
+                                        " - Converting webm tile to spritesheet"
+                                    )
+                                (sprites, duration, framewidth, frameheight) = spritesheet(ffmpeg_path, probe, image, worker)
+                                ET.SubElement(asset, 'type').text = "spriteSheet"
+                                ET.SubElement(asset, 'frameWidth').text = str(framewidth)
+                                ET.SubElement(asset, 'frameHeight').text = str(frameheight)
+                                ET.SubElement(asset, 'resource').text = os.path.basename(sprites)
+                                ET.SubElement(asset, 'duration').text = str(duration)
+                                shutil.copy(
+                                    sprites, os.path.join(packdir, os.path.basename(sprites))
                                 )
                             else:
-                                ffp = subprocess.Popen(
-                                    [
-                                        ffmpeg_path,
-                                        "-v",
-                                        "error",
-                                        "-vcodec",
-                                        "libvpx-vp9",
-                                        "-progress",
-                                        "ffmpeg.log",
-                                        "-i",
-                                        image,
-                                        "-loop",
-                                        "0",
-                                        image + ".webp",
-                                    ],
-                                    startupinfo=startupinfo,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL,
-                                )
+                                if args.gui:
+                                    worker.outputLog(
+                                        " - Converting webm tile to animated webp"
+                                    )
+                                duration = int(probe["nb_read_frames"])
+                                if probe["codec_name"] != "vp9":
+                                    ffp = subprocess.Popen(
+                                        [
+                                            ffmpeg_path,
+                                            "-v",
+                                            "error",
+                                            "-vcodec",
+                                            "libvpx",
+                                            "-progress",
+                                            "ffmpeg.log",
+                                            "-i",
+                                            image,
+                                            "-loop",
+                                            "0",
+                                            image + ".webp",
+                                        ],
+                                        startupinfo=startupinfo,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL,
+                                    )
+                                else:
+                                    ffp = subprocess.Popen(
+                                        [
+                                            ffmpeg_path,
+                                            "-v",
+                                            "error",
+                                            "-vcodec",
+                                            "libvpx-vp9",
+                                            "-progress",
+                                            "ffmpeg.log",
+                                            "-i",
+                                            image,
+                                            "-loop",
+                                            "0",
+                                            image + ".webp",
+                                        ],
+                                        startupinfo=startupinfo,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.STDOUT,
+                                        stdin=subprocess.DEVNULL,
+                                    )
 
-                            with open("ffmpeg.log", "a+") as f:
-                                logged = False
-                                pct = 0
-                                while ffp.poll() is None:
-                                    l = f.readline()
-                                    m = re.match(r"(.*?)=(.*)", l)
-                                    if m:
-                                        key = m.group(1)
-                                        val = m.group(2)
-                                        if key == "frame":
-                                            if not logged:
+                                with open("ffmpeg.log", "a+") as f:
+                                    logged = False
+                                    pct = 0
+                                    while ffp.poll() is None:
+                                        l = f.readline()
+                                        m = re.match(r"(.*?)=(.*)", l)
+                                        if m:
+                                            key = m.group(1)
+                                            val = m.group(2)
+                                            if key == "frame":
+                                                if not logged:
+                                                    print(
+                                                        " webm->webp:    ",
+                                                        file=sys.stderr,
+                                                        end="",
+                                                    )
+                                                    logged = True
+                                                elif pct >= 100:
+                                                    print("\b", file=sys.stderr, end="")
+                                                pos = round(float(val) * 100, 2)
+                                                pct = round(pos / duration)
                                                 print(
-                                                    " webm->webp:    ",
+                                                    "\b\b\b{:02d}%".format(pct),
                                                     file=sys.stderr,
                                                     end="",
                                                 )
-                                                logged = True
-                                            elif pct >= 100:
-                                                print("\b", file=sys.stderr, end="")
-                                            pos = round(float(val) * 100, 2)
-                                            pct = round(pos / duration)
-                                            print(
-                                                "\b\b\b{:02d}%".format(pct),
-                                                file=sys.stderr,
-                                                end="",
-                                            )
-                                            if args.gui:
-                                                worker.updateProgress(pct)
-                                            sys.stderr.flush()
-                            os.remove("ffmpeg.log")
-                        if os.path.exists(image + ".webp"):
-                            ET.SubElement(asset, "type").text = "animatedImage"
-                            image = image + ".webp"
-                            if os.path.exists(
-                                os.path.join(packdir, os.path.basename(image).lower())
-                            ):
-                                exist_count = 1
-                                image_name, image_ext = os.path.splitext(image)
-                                while os.path.exists(
-                                    os.path.join(
-                                        packdir,
-                                        os.path.basename(
-                                            "{}{}{}".format(
-                                                image_name, exist_count, image_ext
-                                            )
-                                        ).lower(),
-                                    )
+                                                if args.gui:
+                                                    worker.updateProgress(pct)
+                                                sys.stderr.flush()
+                                os.remove("ffmpeg.log")
+                            if os.path.exists(image + ".webp"):
+                                ET.SubElement(asset, "type").text = "animatedImage"
+                                image = image + ".webp"
+                                if os.path.exists(
+                                    os.path.join(packdir, os.path.basename(image).lower())
                                 ):
-                                    exist_count += 1
-                                newimage = "{}{}{}".format(
-                                    image_name, exist_count, image_ext
-                                ).lower()
-                            else:
-                                newimage = image.lower()
-                            shutil.copy(
-                                image, os.path.join(packdir, os.path.basename(newimage))
-                            )
-                            size = re.search(
-                                r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+)(?:x([0-9\.]+))?|(tiny|small|medium|large|huge)(x[0-9\.]+)?)", os.path.splitext(os.path.basename(newimage))[0].lower()
-                            )
-                            if size:
-                                h = 1
-                                w = 1
-                                if size.group(2):
-                                    w = max(int(int(size.group(2))/5),1)
-                                elif size.group(3) and size.group(4):
-                                    w = int(size.group(3))
-                                    h = int(size.group(4))
-                                    if size.group(5):
-                                        ET.SubElement(asset, "scale").text = str(size.group(5))
-                                elif size.group(6):
-                                    if size.group(5) == "large":
-                                        w = 2
-                                        h = 2
-                                    elif size.group(5) == "huge":
-                                        w = 3
-                                        h = 3
-                                    if size.group(7):
-                                        ET.SubElement(asset, "scale").text = str(size.group(7)) 
-                                with PIL.Image.open(os.path.join(packdir, os.path.basename(newimage))) as img:
-                                    if img.width == w and img.height == h:
-                                        w = max(int(w/100),1)
-                                        h = max(int(h/100),1)
-                                ET.SubElement(asset, "size").text = "{}x{}".format(w,h)
-                            ET.SubElement(asset, "resource").text = os.path.basename(
-                                newimage
-                            )
+                                    exist_count = 1
+                                    image_name, image_ext = os.path.splitext(image)
+                                    while os.path.exists(
+                                        os.path.join(
+                                            packdir,
+                                            os.path.basename(
+                                                "{}{}{}".format(
+                                                    image_name, exist_count, image_ext
+                                                )
+                                            ).lower(),
+                                        )
+                                    ):
+                                        exist_count += 1
+                                    newimage = "{}{}{}".format(
+                                        image_name, exist_count, image_ext
+                                    ).lower()
+                                else:
+                                    newimage = image.lower()
+                                shutil.copy(
+                                    image, os.path.join(packdir, os.path.basename(newimage))
+                                )
+                                size = re.search(
+                                    r"(([0-9]+) ?ft|([0-9]+)[xX]([0-9]+)(?:x([0-9\.]+))?|(tiny|small|medium|large|huge)(x[0-9\.]+)?)", os.path.splitext(os.path.basename(newimage))[0].lower()
+                                )
+                                if size:
+                                    h = 1
+                                    w = 1
+                                    if size.group(2):
+                                        w = max(int(int(size.group(2))/5),1)
+                                    elif size.group(3) and size.group(4):
+                                        w = int(size.group(3))
+                                        h = int(size.group(4))
+                                        if size.group(5):
+                                            ET.SubElement(asset, "scale").text = str(size.group(5))
+                                    elif size.group(6):
+                                        if size.group(5) == "large":
+                                            w = 2
+                                            h = 2
+                                        elif size.group(5) == "huge":
+                                            w = 3
+                                            h = 3
+                                        if size.group(7):
+                                            ET.SubElement(asset, "scale").text = str(size.group(7)) 
+                                    with PIL.Image.open(os.path.join(packdir, os.path.basename(newimage))) as img:
+                                        if img.width == w and img.height == h:
+                                            w = max(int(w/100),1)
+                                            h = max(int(h/100),1)
+                                    ET.SubElement(asset, "size").text = "{}x{}".format(w,h)
+                                ET.SubElement(asset, "resource").text = os.path.basename(
+                                    newimage
+                                )
                         continue
                     except Exception:
                         import traceback
@@ -3401,7 +3440,7 @@ def convert(args=args, worker=None):
         zipfilename = args.output
     zippos = 0
     with zipfile.ZipFile(
-        zipfilename, "w", allowZip64=False, compression=zipfile.ZIP_DEFLATED
+        zipfilename, "w", compression=zipfile.ZIP_DEFLATED
     ) as zipObj:
         # Iterate over all the files in directory
         for folderName, subfolders, filenames in os.walk(tempdir):
@@ -3625,17 +3664,9 @@ if args.gui:
             self.compendium = QCheckBox(Dialog)
             self.compendium.setGeometry(QRect(30, 240, 171, 31))
             self.compendium.setObjectName("compendium")
-            # self.jpeg = QCheckBox(Dialog)
-            self.jpeg = QComboBox(Dialog)
-            self.jpeg.addItems(
-                [
-                    "Do not convert WebP Files",
-                    "Convert all WebP Files to PNG",
-                    "Convert WebP Maps to JPEG & assets to PNG",
-                ]
-            )
-            self.jpeg.setGeometry(QRect(30, 265, 340, 31))
-            self.jpeg.setObjectName("jpeg")
+            self.spritesheets = QCheckBox(Dialog)
+            self.spritesheets.setGeometry(QRect(30, 265, 340, 31))
+            self.spritesheets.setObjectName("spritesheets")
             self.label = QLabel(Dialog)
             self.label.setGeometry(QRect(30, 80, 340, 21))
             self.label.setVisible(False)
@@ -3699,6 +3730,7 @@ if args.gui:
             Dialog.setWindowTitle(_translate("Dialog", "Foundry to Encounter"))
             self.browseButton.setText(_translate("Dialog", "Browse..."))
             self.compendium.setText(_translate("Dialog", "Include Compendium"))
+            self.spritesheets.setText(_translate("Dialog", "Convert WebM tiles to SpriteSheets"))
             # self.jpeg.setText(_translate("Dialog", "Convert WebP to JPG instead of PNG"))
             self.convert.setText(_translate("Dialog", "Convert"))
 
@@ -3932,8 +3964,12 @@ if args.gui:
             self.settings = settings
             global ffmpeg_path
             global ffprobe_path
-            ffmpeg_path = settings.value("ffmpeg_path", None, type=str)
-            ffprobe_path = settings.value("ffprobe_path", None, type=str)
+            ffmpeg_path1 = settings.value("ffmpeg_path", ffmpeg_path, type=str)
+            ffprobe_path1 = settings.value("ffprobe_path", ffprobe_path, type=str)
+            if ffmpeg_path1:
+                ffmpeg_path = ffmpeg_path1
+            if ffprobe_path1:
+                ffprobe_path = ffprobe_path1
             args.output = self.outputFile
             self.output.setVisible(True)
             self.output.clear()
@@ -3941,13 +3977,14 @@ if args.gui:
             self.progress.setVisible(True)
             args.srcfile = self.foundryFile
             args.compendium = self.compendium.isChecked()
-            jpegopt = self.jpeg.currentText()
-            if "JPEG" in jpegopt:
-                args.jpeg = ".jpeg"
-            elif "PNG" in jpegopt:
-                args.jpeg = ".png"
-            else:
-                args.jpeg = ".webp"
+            args.spritesheets = self.spritesheets.isChecked()
+            #jpegopt = self.jpeg.currentText()
+            #if "JPEG" in jpegopt:
+            #    args.jpeg = ".jpeg"
+            #elif "PNG" in jpegopt:
+            #    args.jpeg = ".png"
+            #else:
+            args.jpeg = ".webp"
             if self.packdir:
                 args.packdir = self.packdir
             print(args)
