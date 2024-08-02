@@ -67,7 +67,7 @@ def spritesheet(ffmpeg_path, probe, image, worker=None):
     frameheight = probe['height']
     frames = []
     for afile in sorted(os.listdir(os.path.dirname(image))):
-        if re.match(re.escape(os.path.splitext(os.path.basename(image))[0])+"-frame[0-9]{5}\.png",afile):
+        if re.match(re.escape(os.path.splitext(os.path.basename(image))[0])+r"-frame[0-9]{5}\.png",afile):
             frames.append(os.path.join(os.path.dirname(image), afile))
 
     def getGrid(n):
