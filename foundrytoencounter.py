@@ -25,7 +25,7 @@ from google.protobuf import text_format
 import fonts_public_pb2
 from spritesheet import spritesheet
 
-VERSION = "1.13.15"
+VERSION = "1.13.16"
 
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
 global ffmpeg_path
