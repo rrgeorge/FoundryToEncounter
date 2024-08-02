@@ -225,7 +225,7 @@ if args.noconv and args.jpeg == ".png":
 if not args.srcfile and not args.gui:
     if sys.platform in ["darwin", "win32"]:
         args.gui = True
-    else:
+    elif __name__ == '__main__':
         parser.print_help()
         exit()
 numbers = ["zero", "one", "two", "three", "four"]
@@ -1959,12 +1959,10 @@ def convert(args=args, worker=None):
                     r"(image/.*?|video/webm)", magic.from_file(image, mime=True)
                 ):
                     print("\r - Skipping", f, file=sys.stderr, end="")
-                    sys.stderr.write("\033[K")
-                    sys.stderr.flush()
+                    print("\033[K", file=sys.stderr, end="")
                     continue
                 print("\r Adding", f, file=sys.stderr, end="")
-                sys.stderr.write("\033[K")
-                sys.stderr.flush()
+                print("\033[K", file=sys.stderr, end="")
                 if args.gui:
                     worker.outputLog(" adding " + f)
                     worker.updateProgress((pos / len(packroot)) * 70)
@@ -2779,7 +2777,7 @@ def convert(args=args, worker=None):
             if "background" not in map and not map["img"] and len(map["tiles"]) == 0:
                 continue
             mapcount += 1
-            sys.stderr.write("\033[K")
+            print("\033[K", file=sys.stderr, end="")
             if args.gui:
                 worker.updateProgress(35 + (mapcount / len(maps)) * 35)
             print(
@@ -2857,7 +2855,7 @@ def convert(args=args, worker=None):
             ET.SubElement(pdfref,"slug").text = slugify(os.path.splitext(os.path.basename(pdf))[0])
             ET.SubElement(pdfref,"reference").text = urllib.parse.quote(os.path.relpath(os.path.join(moduletmp,mod["name"],pdf),tempdir))
     # write to file
-    sys.stderr.write("\033[K")
+    print("\033[K", file=sys.stderr, end="")
     if args.gui:
         worker.updateProgress(70)
         if args.packdir:
@@ -3457,17 +3455,17 @@ def convert(args=args, worker=None):
                 # create complete filepath of file in directory
                 filePath = os.path.join(folderName, filename)
                 # Add file to zip
-                sys.stderr.write("\033[K")
+                print("\033[K", file=sys.stderr, end="")
                 print("\rAdding: {}".format(filename), file=sys.stderr, end="")
                 zipObj.write(
                     filePath,
                     filename if args.packdir else os.path.relpath(filePath, tempdir),
                 )
-    sys.stderr.write("\033[K")
+    print("\033[K", file=sys.stderr, end="")
     print("\rDeleteing temporary files", file=sys.stderr, end="")
     # shutil.rmtree(tempdir)
     tempdir = None
-    sys.stderr.write("\033[K")
+    print("\033[K", file=sys.stderr, end="")
     print("\rFinished creating module: {}".format(zipfilename), file=sys.stderr)
     if args.gui:
         worker.updateProgress(100)
@@ -3999,5 +3997,5 @@ if args.gui:
         app.setWindowIcon(QIcon(":/Icon.png"))
     gui = GUI()
     app.exec_()
-else:
+elif __name__ == '__main__':
     convert()
