@@ -1,8 +1,8 @@
 altgraph==0.17.3
 Pillow==9.4.0
 protobuf==4.22.1
-pyinstaller==5.8.0
-pyinstaller-hooks-contrib==2023.0
+pyinstaller==6.9.0
+pyinstaller-hooks-contrib==2024.7
 PyQt5==5.15.10
 PyQt5-Qt5==5.15.13
 PyQt5-sip==12.13.0
