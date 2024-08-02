@@ -1173,8 +1173,7 @@ def convert(args=args, worker=None):
                     round(((token["y"] - map["offsetY"]) * map["rescale"]))
                     + tokenOffsetY
                 )
-
-                if os.path.exists(urllib.parse.unquote(token["img"])):
+                if "img" in token and os.path.exists(urllib.parse.unquote(token["img"])):
                     tokenasset = ET.SubElement(
                         tokenel,
                         "asset",
@@ -1193,7 +1192,7 @@ def convert(args=args, worker=None):
                 ET.SubElement(tokenel, "hidden").text = (
                     "YES" if token["hidden"] else "NO"
                 )
-                ET.SubElement(tokenel, "scale").text = str(token["scale"])
+                ET.SubElement(tokenel, "scale").text = "1" if "scale" not in token else str(token["scale"])
                 if token["width"] == token["height"] and 1 <= token["width"] <= 6:
                     ET.SubElement(tokenel, "size").text = (
                         "C"
@@ -1228,7 +1227,7 @@ def convert(args=args, worker=None):
                     },
                 )
                 ET.SubElement(vision, "enabled").text = (
-                    "YES" if token["vision"] else "NO"
+                    "YES" if "vision" in token and token["vision"] else "NO"
                 )
                 ET.SubElement(vision, "light").text = (
                     "YES" if int(token["dimLight"]) > 0 or int(token["brightLight"]) > 0 else "NO"
@@ -1241,13 +1240,13 @@ def convert(args=args, worker=None):
                 )
                 ET.SubElement(vision, "lightOpacity").text = str(token["lightAlpha"])
                 ET.SubElement(vision, "dark").text = (
-                    "YES" if int(token["dimSight"]) > 0 or int(token["brightSight"]) > 0 else "NO"
+                    "YES" if "dimSight" in token and (int(token["dimSight"]) > 0 or int(token["brightSight"]) > 0) else "NO"
                 )
                 ET.SubElement(vision, "darkRadiusMin").text = str(
-                    round(int(token["brightSight"]))
+                    round(int(token["brightSight"])) if "brightSight" in token else 0
                 )
                 ET.SubElement(vision, "darkRadiusMax").text = str(
-                    round(int(token["dimSight"]))
+                    round(int(token["dimSight"])) if "dimSight" in token else 0
                 )
 
                 actorLinked = False
