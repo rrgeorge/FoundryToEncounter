@@ -335,6 +335,15 @@ def convert(args=args, worker=None):
         mapbaseslug = slugify(map["name"])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
         slugs.append(mapslug)
+        map["rescale"] = 1.0
+        if map["width"] > 8192 or map["height"] > 8192:
+            map["rescale"] = (
+                8192.0 / map["width"]
+                if map["width"] >= map["height"]
+                else 8192.0 / map["height"]
+            )
+            map["width"] = round(map["width"]*map["rescale"])
+            map["height"] = round(map["height"]*map["rescale"])
         if not map["img"]:
             with PIL.Image.new(
                 "RGB", (map["width"], map["height"]), color="gray"
@@ -393,15 +402,6 @@ def convert(args=args, worker=None):
         #            map["shiftY"] = bg["y"]-map["offsetY"]
         #            map["width"] = bg["width"]
         #            map["height"] = bg["height"]
-        map["rescale"] = 1.0
-        if map["width"] > 8192 or map["height"] > 8192:
-            map["rescale"] = (
-                8192.0 / map["width"]
-                if map["width"] >= map["height"]
-                else 8192.0 / map["height"]
-            )
-            map["width"] = round(map["width"]*map["rescale"])
-            map["height"] = round(map["height"]*map["rescale"])
 
         mapentry = ET.SubElement(
             module,
