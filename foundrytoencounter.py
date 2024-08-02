@@ -2476,6 +2476,36 @@ def convert(args=args, worker=None):
             worker.updateProgress(5 + (order / len(journal)) * 10)
         if "$$deleted" in j and j["$$deleted"]:
             continue
+        if "content" not in j:
+            if "pages" in j:
+                for p in j["pages"]:
+                    subpage = ET.SubElement(
+                        module,
+                        "page",
+                        {"id": str(uuid.uuid5(moduuid, p["_id"])), "sort": str(p["sort"] or order)},
+                    )
+                    if "folder" in p and p["folder"] is not None:
+                        subpage.set("parent", str(uuid.uuid5(moduuid, p["folder"])))
+                    ET.SubElement(subpage, "name").text = p["name"]
+                    ET.SubElement(subpage, "slug").text = slugify(p["name"])
+                    content = ET.SubElement(subpage, "content")
+                    content.text = p["text"]["content"] if "text" in p and "content" in p["text"] else p["content"] if "content" in p else ""
+                    content.text = re.sub(
+                        r'<a(.*?)data-entity="?(.*?)"? (.*?)data-id="?(.*?)"?( .*?)?>',
+                        fixLink,
+                        content.text,
+                    )
+                    content.text = re.sub(r"@(.*?)\[(.*?)\](?:\{(.*?)\})?", fixFTag, content.text)
+                    content.text = re.sub(
+                        r"\[\[(?:/(?:gm)?r(?:oll)? )?(.*?)(?: ?# ?(.*?))?\]\]",
+                        fixRoll,
+                        content.text,
+                    )
+            continue
+        if "img" in j and j["img"]:
+            content.text += '<img src="{}">'.format(j["img"])
+            print("skipping",order,"of",len(journal))
+            continue
         if not j["content"] and ("img" not in j or not j["img"]):
             continue
         print(
