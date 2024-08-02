@@ -1754,37 +1754,40 @@ def convert(args=args, worker=None):
                     pack["path"] = pack["path"][2:]
                 try:
                     with z.open(pack["path"]) as f:
+                        packtype = pack["type"] if "entity" not in pack else pack["entity"]
                         if "label" in pack:
                             folders.append({
                                 "_id": slugify(pack["label"]),
-                                "type": pack["entity"],
+                                "type": packtype,
                                 "name": pack["label"],
                                 "parent": None
                                 })
                         l = f.readline().decode("utf8")
                         while l:
-                            if pack["entity"] == "JournalEntry":
+                            if packtype == "JournalEntry":
                                 jrn = json.loads(l)
                                 if "folder" not in jrn and not jrn["folder"]:
                                     jrn["folder"] = slugify(pack["label"])
                                 journal.append(jrn)
-                            elif pack["entity"] == "Scene":
+                            elif packtype == "Scene":
                                 scene = json.loads(l)
                                 if "folder" not in scene or not scene["folder"]:
                                     scene["folder"] = slugify(pack["label"])
                                 maps.append(scene)
-                            elif pack["entity"] == "Actor":
+                            elif packtype == "Actor":
                                 actor = json.loads(l)
                                 actors.append(actor)
-                            elif pack["entity"] == "Item":
+                            elif packtype == "Item":
                                 item = json.loads(l)
                                 items.append(item)
-                            elif pack["entity"] == "Playlist":
+                            elif packtype == "Playlist":
                                 playlist = json.loads(l)
                                 playlists.append(playlist)
                             l = f.readline().decode("utf8")
                         f.close()
                 except Exception as e:
+                    import traceback
+                    print(traceback.format_exc())
                     print("Could not open",pack["path"],e)
         if not mod and args.packdir:
             mod = {
