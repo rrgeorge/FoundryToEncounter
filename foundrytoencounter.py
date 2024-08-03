@@ -3821,6 +3821,8 @@ if args.gui:
                         with z.open(filename) as f:
                             mod = json.load(f)
             if mod:
+                if "name" not in mod and "id" in mod:
+                    mod["name"] = mod["id"]
                 if isworld:
                     self.label.setText("Foundry World: {}".format(mod["title"]))
                 else:
