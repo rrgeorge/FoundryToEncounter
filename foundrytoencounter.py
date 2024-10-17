@@ -46,8 +46,6 @@ except Exception as e:
     print(e)
     ffmpeg_path = None
     ffprobe_path = None
-print(ffmpeg_path)
-print(ffprobe_path)
 """For pyinstaller -w"""
 startupinfo = None
 if sys.platform == "win32":
@@ -1278,10 +1276,11 @@ def convert(args=args, worker=None):
 
         if "drawings" in map and len(map["drawings"]) > 0:
             for d in map["drawings"]:
-                if d["type"] == "t":
+                if ("type" in d and d["type"] == "t") or "text" in d:
                     with PIL.Image.new(
                         "RGBA",
-                        (round(d["width"]), round(d["height"])),
+                        (round(d["width"] if "width" in d else d["shape"]["width"]),
+                         round(d["height"] if "height" in d else d["shape"]["height"])),
                         color=(0, 0, 0, 0),
                     ) as img:
                         d["fontSize"] = round(d["fontSize"] / 0.75)
@@ -1357,14 +1356,14 @@ def convert(args=args, worker=None):
                         text = d["text"]
                         draw = PIL.ImageDraw.Draw(img)
                         if draw.multiline_textsize(text, font=font)[0] > round(
-                            d["width"]
+                            d["width"] if "width" in d else d["shape"]["width"]
                         ):
                             words = text.split(" ")
                             text = ""
                             for i in range(len(words)):
                                 if draw.multiline_textsize(
                                     text + " " + words[i], font=font
-                                )[0] <= round(d["width"]):
+                                )[0] <= round(d["width"] if "width" in d else d["shape"]["width"]):
                                     text += " " + words[i]
                                 else:
                                     text += "\n" + words[i]
@@ -1375,22 +1374,22 @@ def convert(args=args, worker=None):
                     tile = ET.SubElement(mapentry, "tile")
                     ET.SubElement(tile, "x").text = str(
                         round(
-                            (d["x"] - map["offsetX"] + (d["width"] / 2))
+                            (d["x"] - map["offsetX"] + ((d["width"] if "width" in d else d["shape"]["width"]) / 2))
                             * map["rescale"]
                         )
                     )
                     ET.SubElement(tile, "y").text = str(
                         round(
-                            (d["y"] - map["offsetY"] + (d["height"] / 2))
+                            (d["y"] - map["offsetY"] + ((d["height"] if "height" in d else d["shape"]["height"]) / 2))
                             * map["rescale"]
                         )
                     )
                     ET.SubElement(tile, "zIndex").text = str(d["z"])
                     ET.SubElement(tile, "width").text = str(
-                        round(d["width"] * map["rescale"])
+                        round((d["width"] if "width" in d else d["shape"]["width"]) * map["rescale"])
                     )
                     ET.SubElement(tile, "height").text = str(
-                        round(d["height"] * map["rescale"])
+                        round((d["height"] if "height" in d else d["shape"]["height"]) * map["rescale"])
                     )
                     ET.SubElement(tile, "opacity").text = "1.0"
                     ET.SubElement(tile, "rotation").text = str(d["rotation"])
@@ -1402,7 +1401,7 @@ def convert(args=args, worker=None):
                     ET.SubElement(asset, "type").text = "image"
                     ET.SubElement(asset, "resource").text = "text_" + d["_id"] + ".png"
 
-                elif d["type"] == "p":
+                if "type" in d and d["type"] == "p":
                     drawing = ET.SubElement(
                         mapentry, "drawing", {"id": str(uuid.uuid5(moduuid, d["_id"]))}
                     )
@@ -1422,6 +1421,35 @@ def convert(args=args, worker=None):
                         points.append(
                             str((p[1] - map["offsetY"] + d["y"]) * map["rescale"])
                         )
+                    ET.SubElement(drawing, "data").text = ",".join(points)
+                if "shape" in d and d["shape"]["type"] == "r":
+                    drawing = ET.SubElement(
+                        mapentry, "drawing", {"id": str(uuid.uuid5(moduuid, d["_id"]))}
+                    )
+                    ET.SubElement(drawing, "layer").text = (
+                        "dm" if d["hidden"] else "map"
+                    )
+                    ET.SubElement(drawing, "shape").text = "ellipse"
+                    ET.SubElement(drawing, "strokeWidth").text = str(d["strokeWidth"])
+                    ET.SubElement(drawing, "strokeColor").text = d["strokeColor"]
+                    ET.SubElement(drawing, "opacity").text = str(d["strokeAlpha"])
+                    ET.SubElement(drawing, "fillColor").text = d["fillColor"]
+
+                    points = []
+                    print(d)
+                    #'width': 135, 'height': 108, 'radius': None, 'points': []}, 'x': 1688, 'y': 1500,
+                    points.append(
+                            str(((0) - map["offsetX"] + d["x"]) * map["rescale"])
+                            )
+                    points.append(
+                            str(((0) - map["offsetY"] + d["y"]) * map["rescale"])
+                            )
+                    points.append(
+                            str(((d["shape"]["width"]) - map["offsetX"] + d["x"]) * map["rescale"])
+                            )
+                    points.append(
+                            str(((d["shape"]["height"]) - map["offsetY"] + d["y"]) * map["rescale"])
+                            )
                     ET.SubElement(drawing, "data").text = ",".join(points)
         if args.jrnmap:
             for j in sorted(journal, key=lambda j: j["name"] if "name" in j else ""):
