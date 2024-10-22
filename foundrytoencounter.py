@@ -631,7 +631,7 @@ def convert(args=args, worker=None):
                     img = img.resize(
                         (round(img.width * scale), round(img.height * scale))
                     )
-                img.save(os.path.join(tempdir, mapslug + "_bg.png"))
+                img.save(os.path.join(tempdir, mapslug + "_bg" + args.jpeg))
                 if map["height"] != img.height or map["width"] != img.width:
                     map["scale"] = (
                         map["width"] / img.width
@@ -1355,15 +1355,19 @@ def convert(args=args, worker=None):
                                     font = PIL.ImageFont.load_default()
                         text = d["text"]
                         draw = PIL.ImageDraw.Draw(img)
-                        if draw.multiline_textsize(text, font=font)[0] > round(
+                        bbox = draw.multiline_textbbox((0,0), text, font=font)
+                        #if draw.multiline_textsize(text, font=font)[0] > round(
+                        if (bbox[2]-bbox[0]) > round(
                             d["width"] if "width" in d else d["shape"]["width"]
                         ):
                             words = text.split(" ")
                             text = ""
                             for i in range(len(words)):
-                                if draw.multiline_textsize(
-                                    text + " " + words[i], font=font
-                                )[0] <= round(d["width"] if "width" in d else d["shape"]["width"]):
+                                bbox = draw.multiline_textbbox((0,0), text + " " + words[i], font=font)
+                                #if draw.multiline_textsize(
+                                #    text + " " + words[i], font=font
+                                #)[0] <= round(d["width"] if "width" in d else d["shape"]["width"]):
+                                if (bbox[2]-bbox[0]) <= round(d["width"] if "width" in d else d["shape"]["width"]):
                                     text += " " + words[i]
                                 else:
                                     text += "\n" + words[i]
