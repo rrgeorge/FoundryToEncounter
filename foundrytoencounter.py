@@ -25,7 +25,7 @@ from google.protobuf import text_format
 import fonts_public_pb2
 from spritesheet import spritesheet
 
-VERSION = "1.13.18"
+VERSION = "1.14.0"
 
 PIL.Image.MAX_IMAGE_PIXELS = 200000000
 global ffmpeg_path
@@ -293,7 +293,7 @@ def fixRoll(m):
 
 
 def convert(args=args, worker=None):
-    def createMap(map, mapgroup):
+    def createMap(map, mapgroup,level=None):
         if type(map["grid"]) == dict:
             mapgrid = map["grid"]
         else:
@@ -330,7 +330,10 @@ def convert(args=args, worker=None):
             ) * 0.5
         map["offsetX"] -= map["shiftX"] if map["shiftX"] else map["background"]["offsetX"] if "background" in map else 0
         map["offsetY"] -= map["shiftY"] if map["shiftY"] else map["background"]["offsetY"] if "background" in map else 0
-        mapbaseslug = slugify(map["name"])
+        if level:
+            mapbaseslug = slugify(map["name"] + " ({})".format(level[2]))
+        else:
+            mapbaseslug = slugify(map["name"])
         mapslug = mapbaseslug + str(len([i for i in slugs if mapbaseslug in i]))
         slugs.append(mapslug)
         map["rescale"] = 1.0
@@ -404,13 +407,16 @@ def convert(args=args, worker=None):
         mapentry = ET.SubElement(
             module,
             "map",
-            {"id": str(uuid.uuid5(moduuid, map["_id"])), "sort": str(int(map["sort"]))},
+            {"id": str(uuid.uuid5(moduuid, (map["_id"]+"_lvl_"+level[2]) if level else map["_id"])), "sort": str(int(map["sort"]))},
         )
         if mapgroup:
             mapentry.set("parent", mapgroup)
         elif "folder" in map and map["folder"]:
             mapentry.set("parent", str(uuid.uuid5(moduuid, map["folder"])))
-        ET.SubElement(mapentry, "name").text = map["name"]
+        if level:
+            ET.SubElement(mapentry, "name").text = map["name"] + " ({})".format(level[2])
+        else:
+            ET.SubElement(mapentry, "name").text = map["name"]
         ET.SubElement(mapentry, "slug").text = mapslug
         if map["img"] and os.path.exists(urllib.parse.unquote(map["img"])):
             map["img"] = urllib.parse.unquote(map["img"])
@@ -716,6 +722,11 @@ def convert(args=args, worker=None):
         if "walls" in map and len(map["walls"]) > 0:
             for i in range(len(map["walls"])):
                 p = map["walls"][i]
+                if level and "flags" in p and "wall-height" in p["flags"]:
+                    if (p["flags"]["wall-height"]["bottom"] or 0) < int(level[0]) and p["flags"]["wall-height"]["top"] < int(level[0]):
+                        continue
+                    elif (p["flags"]["wall-height"]["bottom"] or 0) > int(level[1]):
+                        continue
                 if "sight" in p:
                     p["sense"] = 1 if p["sight"] == 20 else 2 if p["sight"] == 10 else 0
                     p["move"] = 1 if p["move"] == 20 else 0
@@ -837,6 +848,14 @@ def convert(args=args, worker=None):
         if "tiles" in map:
             for i in range(len(map["tiles"])):
                 image = map["tiles"][i]
+                if level and "flags" in image and "levels" in image["flags"]:
+                    if image["flags"]["levels"]["rangeTop"] is not None and image["flags"]["levels"]["rangeTop"] < int(level[0]):
+                        if "showIfAbove" in image["flags"]["levels"] and not image["flags"]["levels"]["showIfAbove"]:
+                            continue
+                        else:
+                            continue
+                    elif image["flags"]["levels"]["rangeBottom"] is not None and image["flags"]["levels"]["rangeBottom"] > int(level[1]):
+                            continue
                 if "img" not in image and "texture" in image:
                     texture = image["texture"]
                     image["img"] = texture["src"]
@@ -1010,6 +1029,13 @@ def convert(args=args, worker=None):
                     )
                     image["img"] = os.path.basename(image["img"])
                 if not os.path.exists(image["img"]):
+                    if os.path.splitext(image["img"])[1] == ".svg":
+                        gameIcon = os.path.join(os.path.dirname(os.path.realpath(__file__)),"icons",os.path.splitext(os.path.basename(image["img"]))[0] + ".png")
+                        if os.path.exists(gameIcon):
+                            image["img"] = os.path.join("icons",os.path.basename(gameIcon))
+                            if not os.path.exists(os.path.dirname(image["img"])):
+                                os.mkdir(os.path.dirname(image["img"]))
+                            shutil.copyfile(gameIcon,image["img"])
                     if os.path.exists(os.path.splitext(image["img"])[0] + ".png"):
                         image["img"] = os.path.splitext(image["img"])[0] + ".png"
                         imgext = ".png"
@@ -1020,7 +1046,7 @@ def convert(args=args, worker=None):
                             " - MISSING RESOURCE:",
                             image["img"],
                             file=sys.stderr,
-                            end="",
+                            end="\n",
                         )
                         continue
                 img = PIL.Image.open(image["img"])
@@ -1077,6 +1103,11 @@ def convert(args=args, worker=None):
                     end="",
                 )
                 light = map["lights"][i]
+                if level and "flags" in light and "levels" in light["flags"]:
+                    if light["flags"]["levels"]["rangeTop"] is not None and light["flags"]["levels"]["rangeTop"] < int(level[0]):
+                            continue
+                    elif light["flags"]["levels"]["rangeBottom"] is not None and light["flags"]["levels"]["rangeBottom"] > int(level[1]):
+                            continue
                 if "config" in light:
                     light["dim"] = light["config"]["dim"]
                     light["bright"] = light["config"]["bright"]
@@ -1276,6 +1307,11 @@ def convert(args=args, worker=None):
 
         if "drawings" in map and len(map["drawings"]) > 0:
             for d in map["drawings"]:
+                if level and "flags" in d and "levels" in d["flags"]:
+                    if d["flags"]["levels"]["rangeTop"] is not None and d["flags"]["levels"]["rangeTop"] < int(level[0]):
+                            continue
+                    elif d["flags"]["levels"]["rangeBottom"] is not None and d["flags"]["levels"]["rangeBottom"] > int(level[1]):
+                            continue
                 if ("type" in d and d["type"] == "t") or "text" in d:
                     with PIL.Image.new(
                         "RGBA",
@@ -1356,23 +1392,33 @@ def convert(args=args, worker=None):
                         text = d["text"]
                         draw = PIL.ImageDraw.Draw(img)
                         bbox = draw.multiline_textbbox((0,0), text, font=font)
-                        #if draw.multiline_textsize(text, font=font)[0] > round(
-                        if (bbox[2]-bbox[0]) > round(
-                            d["width"] if "width" in d else d["shape"]["width"]
-                        ):
-                            words = text.split(" ")
-                            text = ""
-                            for i in range(len(words)):
-                                bbox = draw.multiline_textbbox((0,0), text + " " + words[i], font=font)
-                                #if draw.multiline_textsize(
-                                #    text + " " + words[i], font=font
-                                #)[0] <= round(d["width"] if "width" in d else d["shape"]["width"]):
-                                if (bbox[2]-bbox[0]) <= round(d["width"] if "width" in d else d["shape"]["width"]):
-                                    text += " " + words[i]
-                                else:
-                                    text += "\n" + words[i]
+                        while ((bbox[2]-bbox[0]) > round(
+                                d["width"] if "width" in d else d["shape"]["width"]
+                                )) or ((bbox[3]-bbox[1]) > round(
+                                d["height"] if "height" in d else d["shape"]["height"]
+                                )):
+                            #if draw.multiline_textsize(text, font=font)[0] > round(
+                            text = d["text"]
+                            font = font.font_variant(size=font.size-1)
+                            bbox = draw.multiline_textbbox((0,0), text, font=font)
+                            if (bbox[2]-bbox[0]) > round(
+                                d["width"] if "width" in d else d["shape"]["width"]
+                            ):
+                                words = text.split(" ")
+                                text = ""
+                                for i in range(len(words)):
+                                    bbox = draw.multiline_textbbox((0,0), text + " " + words[i], font=font)
+                                    #if draw.multiline_textsize(
+                                    #    text + " " + words[i], font=font
+                                    #)[0] <= round(d["width"] if "width" in d else d["shape"]["width"]):
+                                    if (bbox[2]-bbox[0]) <= round(d["width"] if "width" in d else d["shape"]["width"]):
+                                        text += " " + words[i]
+                                    else:
+                                        text += "\n" + words[i]
+                                    text = text.lstrip()
+                        
                         draw.multiline_text(
-                            (0, 0), text, (255, 255, 255), spacing=0, font=font
+                            (img.width/2, img.height/2), text, PIL.ImageColor.getcolor(d["textColor"] if d["textColor"] else "#FFFFFF", "RGB"), spacing=0, font=font, anchor="mm", align="center"
                         )
                         img.save(os.path.join(tempdir, "text_" + d["_id"] + ".png"))
                     tile = ET.SubElement(mapentry, "tile")
@@ -1426,6 +1472,34 @@ def convert(args=args, worker=None):
                             str((p[1] - map["offsetY"] + d["y"]) * map["rescale"])
                         )
                     ET.SubElement(drawing, "data").text = ",".join(points)
+                if "type" in d and d["type"] == "r":
+                    drawing = ET.SubElement(
+                        mapentry, "drawing", {"id": str(uuid.uuid5(moduuid, d["_id"]))}
+                    )
+                    ET.SubElement(drawing, "layer").text = (
+                        "dm" if d["hidden"] else "map"
+                    )
+                    ET.SubElement(drawing, "shape").text = "ellipse"
+                    ET.SubElement(drawing, "strokeWidth").text = str(d["strokeWidth"])
+                    ET.SubElement(drawing, "strokeColor").text = d["strokeColor"]
+                    ET.SubElement(drawing, "opacity").text = str(d["strokeAlpha"])
+                    ET.SubElement(drawing, "fillColor").text = d["fillColor"]
+
+                    points = []
+                    #'width': 135, 'height': 108, 'radius': None, 'points': []}, 'x': 1688, 'y': 1500,
+                    points.append(
+                            str(((d["width"]/2) - map["offsetX"] + d["x"]) * map["rescale"])
+                            )
+                    points.append(
+                            str(((d["height"]/2) - map["offsetY"] + d["y"]) * map["rescale"])
+                            )
+                    points.append(
+                            str((d["width"]/2) * map["rescale"])
+                            )
+                    points.append(
+                            str((d["height"]/2) * map["rescale"])
+                            )
+                    ET.SubElement(drawing, "data").text = ",".join(points)
                 if "shape" in d and d["shape"]["type"] == "r":
                     drawing = ET.SubElement(
                         mapentry, "drawing", {"id": str(uuid.uuid5(moduuid, d["_id"]))}
@@ -1440,19 +1514,18 @@ def convert(args=args, worker=None):
                     ET.SubElement(drawing, "fillColor").text = d["fillColor"]
 
                     points = []
-                    print(d)
                     #'width': 135, 'height': 108, 'radius': None, 'points': []}, 'x': 1688, 'y': 1500,
                     points.append(
-                            str(((0) - map["offsetX"] + d["x"]) * map["rescale"])
+                            str(((d["shape"]["width"]/2) - map["offsetX"] + d["x"]) * map["rescale"])
                             )
                     points.append(
-                            str(((0) - map["offsetY"] + d["y"]) * map["rescale"])
+                            str(((d["shape"]["height"]/2) - map["offsetY"] + d["y"]) * map["rescale"])
                             )
                     points.append(
-                            str(((d["shape"]["width"]) - map["offsetX"] + d["x"]) * map["rescale"])
+                            str((d["shape"]["width"]/2) * map["rescale"])
                             )
                     points.append(
-                            str(((d["shape"]["height"]) - map["offsetY"] + d["y"]) * map["rescale"])
+                            str((d["shape"]["height"]/2) * map["rescale"])
                             )
                     ET.SubElement(drawing, "data").text = ",".join(points)
         if args.jrnmap:
@@ -2852,6 +2925,19 @@ def convert(args=args, worker=None):
                 end="",
             )
             createMap(map, mapgroup)
+            if "flags" in map and "levels" in map["flags"] and "sceneLevels" in map["flags"]["levels"]:
+                lvl = 1
+                for level in map["flags"]["levels"]["sceneLevels"]:
+                    if not level[2]:
+                        level[2] = "level {}".format(lvl)
+                    print(
+                        "\rConverting maps [{}/{}] {:.0f}% (Level: {})".format(
+                            mapcount, len(maps), mapcount / len(maps) * 100, level[2]
+                        ),
+                        file=sys.stderr,
+                        end="",
+                    )
+                    createMap(map, str(uuid.uuid5(moduuid, map["_id"])),level)
     while True:
         removed = False
         for g in module.iter("group"):
